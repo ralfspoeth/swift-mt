@@ -9,7 +9,6 @@ import java.util.Set;
 public class SwiftInputAdapterFactory implements InputAdapterFactory {
 
     private static final Set<String> SWIFT_TYPES = Set.of(
-            "text/plain",
             "text/x-swift",
             "application/octet-stream",
             "application/x-swift"
