@@ -17,7 +17,7 @@ class SwiftInputAdapterFactoryTest {
     @Test
     void createBasicInputAdapter() {
         // given
-        var allSelector = new FieldSelectorSpec("text", "$0", DataType.STRING);
+        var allSelector = new FieldSelectorSpec("text", "4/.*/0", DataType.STRING);
         var spec = new InputSpec(
                 "text/plain",
                 null, null, // we don't need the file patterns

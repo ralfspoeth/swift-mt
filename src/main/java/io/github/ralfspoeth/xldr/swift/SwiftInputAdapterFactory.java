@@ -22,6 +22,6 @@ public class SwiftInputAdapterFactory implements InputAdapterFactory {
 
     @Override
     public InputAdapter createInputAdapter(InputSpec spec) {
-        return new  SwiftInputAdapter();
+        return new  SwiftInputAdapter(spec);
     }
 }

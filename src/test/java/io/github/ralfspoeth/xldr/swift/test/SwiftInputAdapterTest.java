@@ -1,6 +1,11 @@
 package io.github.ralfspoeth.xldr.swift.test;
 
+import io.github.ralfspoeth.xldr.ia.Field;
+import io.github.ralfspoeth.xldr.ia.Result;
+import io.github.ralfspoeth.xldr.spec.DataType;
+import io.github.ralfspoeth.xldr.spec.FieldSelectorSpec;
 import io.github.ralfspoeth.xldr.spec.InputSpec;
+import io.github.ralfspoeth.xldr.spec.RecordSelectorSpec;
 import io.github.ralfspoeth.xldr.swift.SwiftInputAdapterFactory;
 import org.junit.jupiter.api.Test;
 
@@ -8,9 +13,10 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static java.util.stream.Collectors.joining;
 
 class SwiftInputAdapterTest {
 
@@ -32,9 +38,26 @@ class SwiftInputAdapterTest {
                 :64:C260806EUR61570,50
                 -}{5:{MAC:12345678}{CHK:ABC123XYZ456}}""";
         var is = new ByteArrayInputStream(src.getBytes());
-        var ia = new SwiftInputAdapterFactory().createInputAdapter(new InputSpec(
-                "text/plain", null, null, List.of(), List.of(), Map.of()
-        ));
-        ia.parse(is, "asdf", Set.of());
+        var ia = new SwiftInputAdapterFactory().createInputAdapter(
+                new InputSpec("text/plain", null, null,
+                        List.of(new RecordSelectorSpec("entry", ":61:/:86:", List.of(
+                                new FieldSelectorSpec("1", "1/.*/0", DataType.STRING),
+                                new FieldSelectorSpec("61", "/.*/0", DataType.STRING),
+                                new FieldSelectorSpec("61VD", "/([0-9]{6}).*/1", DataType.STRING),
+                                new FieldSelectorSpec("86", "/1/.*/0", DataType.STRING)
+                        ))),
+                        List.of(), Map.of())
+        );
+        var result = ia.parse(is, "entry", Set.of("1", "61", "61VD", "86"));
+        print(result);
+    }
+
+    private static void print(Result result) {
+        // header
+        System.out.println(result.fields().stream().map(Field::name).collect(joining("\t")));
+        result.rows().map(r -> result.fields().stream().map(r::get)
+                        .map(Objects::toString)
+                        .collect(joining("\t")))
+                .forEach(System.out::println);
     }
 }
