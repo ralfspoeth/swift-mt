@@ -37,10 +37,9 @@ class SwiftInputAdapterTest {
                 :62F:C260806EUR61570,50
                 :64:C260806EUR61570,50
                 -}{5:{MAC:12345678}{CHK:ABC123XYZ456}}""";
-        var is = new ByteArrayInputStream(src.getBytes());
         var ia = new SwiftInputAdapterFactory().createInputAdapter(
-                new InputSpec("text/plain", null, null,
-                        List.of(new RecordSelectorSpec("entry", ":61:/:86:", List.of(
+                new InputSpec("text/plain", null, null, List.of(
+                        new RecordSelectorSpec("entry", ":61:/:86:", List.of(
                                 new FieldSelectorSpec("5", "5/.*/0", DataType.STRING),
                                 new FieldSelectorSpec("3", "3/.*/0", DataType.STRING),
                                 new FieldSelectorSpec("2", "2/.*/0", DataType.STRING),
@@ -51,10 +50,9 @@ class SwiftInputAdapterTest {
                         ))),
                         List.of(), Map.of())
         );
-        var result = ia.parse(is, "entry", Set.of(
-                "0", "1", "2", "3", "5", "61", "61VD", "86"
-        ));
-        print(result);
+
+        print(ia.parse(new ByteArrayInputStream(src.getBytes()), "entry", Set.of("1", "2", "3", "5")));
+        print(ia.parse(new ByteArrayInputStream(src.getBytes()), "entry", Set.of("61", "61VD", "86")));
     }
 
     private static void print(Result result) {
