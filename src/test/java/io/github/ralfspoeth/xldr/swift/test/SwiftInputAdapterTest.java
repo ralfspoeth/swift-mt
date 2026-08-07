@@ -41,6 +41,9 @@ class SwiftInputAdapterTest {
         var ia = new SwiftInputAdapterFactory().createInputAdapter(
                 new InputSpec("text/plain", null, null,
                         List.of(new RecordSelectorSpec("entry", ":61:/:86:", List.of(
+                                new FieldSelectorSpec("5", "5/.*/0", DataType.STRING),
+                                new FieldSelectorSpec("3", "3/.*/0", DataType.STRING),
+                                new FieldSelectorSpec("2", "2/.*/0", DataType.STRING),
                                 new FieldSelectorSpec("1", "1/.*/0", DataType.STRING),
                                 new FieldSelectorSpec("61", "/.*/0", DataType.STRING),
                                 new FieldSelectorSpec("61VD", "/([0-9]{6}).*/1", DataType.STRING),
@@ -48,7 +51,9 @@ class SwiftInputAdapterTest {
                         ))),
                         List.of(), Map.of())
         );
-        var result = ia.parse(is, "entry", Set.of("1", "61", "61VD", "86"));
+        var result = ia.parse(is, "entry", Set.of(
+                "0", "1", "2", "3", "5", "61", "61VD", "86"
+        ));
         print(result);
     }
 

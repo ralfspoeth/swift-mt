@@ -11,10 +11,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -124,31 +121,45 @@ class SwiftInputAdapter implements InputAdapter {
         }
     }
 
-    private static List<Row> parseRows(ParsedMessage parsed, final RecordSelector rs) {
+    private static List<Row> parseRows(final ParsedMessage parsed, final RecordSelector rs) {
         List<Row> rows = new ArrayList<>();
         var tbMatcher = TB_PATTERN.matcher(parsed.textBlock);
-        List<String> tags = new ArrayList<>();
+        List<String> tmpTags = new ArrayList<>();
         int index = 0;
         while (tbMatcher.find()) {
             if (tbMatcher.group(1).equals(rs.tags.get(index))) {
-                tags.add(tbMatcher.group(2));
+                tmpTags.add(tbMatcher.group(2));
                 index++;
             }
             if (index == rs.tags.size()) {
                 rows.add(new Row() {
-                    final List<String> data = List.copyOf(tags);
+                    // local copy of the tags just found
+                    final List<String> data = List.copyOf(tmpTags);
+
                     @Override
                     public @Nullable Object get(String name) {
                         return ofNullable(rs.fieldSelectors().get(name))
-                                .map(fs -> {
-                                    var m = fs.pattern.matcher(data.get(fs.tag));
-                                    return m.matches() ? m.group(fs.group) : null;
-                                })
+                                .flatMap(this::parseField)
                                 .orElse(null);
                     }
+
+                    private Optional<Object> parseField(FieldSelector fs) {
+                        var segment = switch (fs.block) {
+                            case 1 -> parsed.basicHeader;
+                            case 2 -> parsed.applicationHeader;
+                            case 3 -> parsed.userHeader;
+                            case 4 -> data.get(fs.tag);
+                            case 5 -> parsed.trailer;
+                            default -> throw new AssertionError();
+                        };
+                        assert segment != null;
+                        var matcher = fs.pattern.matcher(segment);
+                        return matcher.matches() ? Optional.of(matcher.group(fs.group)) : Optional.empty();
+                    }
                 });
-                index=0;
-                tags.clear();
+                // reset buffered input
+                index = 0;
+                tmpTags.clear();
             }
         }
         return rows;
