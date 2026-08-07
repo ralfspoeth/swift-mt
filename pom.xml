@@ -11,7 +11,7 @@
     </parent>
 
     <groupId>io.github.ralfspoeth.xldr</groupId>
-    <artifactId>swift-ia</artifactId>
+    <artifactId>swift-mt</artifactId>
     <version>0.1-SNAPSHOT</version>
 
     <properties>

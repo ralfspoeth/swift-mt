@@ -1,4 +1,4 @@
-package io.github.ralfspoeth.xldr.swift.test;
+package io.github.ralfspoeth.xldr.swift.mt.test;
 
 /**
  * Realistic FIN messages for the tests.

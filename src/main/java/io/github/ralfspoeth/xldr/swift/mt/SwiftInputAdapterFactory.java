@@ -1,4 +1,4 @@
-package io.github.ralfspoeth.xldr.swift;
+package io.github.ralfspoeth.xldr.swift.mt;
 
 import io.github.ralfspoeth.xldr.ia.InputAdapter;
 import io.github.ralfspoeth.xldr.ia.InputAdapterFactory;

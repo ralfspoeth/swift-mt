@@ -1,4 +1,4 @@
-package io.github.ralfspoeth.xldr.swift.test;
+package io.github.ralfspoeth.xldr.swift.mt.test;
 
 import io.github.ralfspoeth.xldr.ia.InputAdapter;
 import io.github.ralfspoeth.xldr.ia.InputAdapterFactory;
@@ -6,7 +6,7 @@ import io.github.ralfspoeth.xldr.spec.DataType;
 import io.github.ralfspoeth.xldr.spec.FieldSelectorSpec;
 import io.github.ralfspoeth.xldr.spec.InputSpec;
 import io.github.ralfspoeth.xldr.spec.RecordSelectorSpec;
-import io.github.ralfspoeth.xldr.swift.SwiftInputAdapterFactory;
+import io.github.ralfspoeth.xldr.swift.mt.SwiftInputAdapterFactory;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

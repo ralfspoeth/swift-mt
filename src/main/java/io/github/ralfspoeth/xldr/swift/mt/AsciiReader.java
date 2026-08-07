@@ -1,4 +1,4 @@
-package io.github.ralfspoeth.xldr.swift;
+package io.github.ralfspoeth.xldr.swift.mt;
 
 import java.io.IOException;
 import java.io.InputStream;
