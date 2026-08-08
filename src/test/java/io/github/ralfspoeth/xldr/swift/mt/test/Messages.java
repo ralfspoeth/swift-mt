@@ -132,6 +132,40 @@ final class Messages {
             -}""";
 
     /**
+     * An MT300 foreign-exchange confirmation, whose sequences are introduced by
+     * the start-only delimiters {@code :15A:}, {@code :15B:}, {@code :15C:} -
+     * Sequence A general information, B transaction details, C optional general
+     * information. There is no closing field: a sequence runs until the next
+     * delimiter of the same field number.
+     * <p>
+     * Two details the tests turn on. The delimiters carry no value of their own,
+     * standing alone on their line. And Sequence B holds {@code :53A:} and
+     * {@code :57A:} twice, once for each side of the trade, which is why a field
+     * selector naming a tag takes the first.
+     */
+    static final String MT300 = """
+            {1:F01BANKDEFFAXXX0000000000}{2:I300BANKFRPPXXXXN}{4:
+            :15A:
+            :20:FXREF20260806001
+            :22A:NEWT
+            :22C:BANKDE0000BANKFR0000
+            :82A:BANKDEFFXXX
+            :87A:BANKFRPPXXX
+            :15B:
+            :30T:20260806
+            :30V:20260810
+            :36:1,0850
+            :32B:EUR1000000,
+            :53A:BANKDEFFXXX
+            :57A:BANKFRPPXXX
+            :33B:USD1085000,
+            :53A:BANKUS33XXX
+            :57A:CHASUS33XXX
+            :15C:
+            :24D:PHON
+            -}""";
+
+    /**
      * A statement whose last {@code :61:} has no {@code :86:} after it, for the
      * rule that only a complete tag sequence produces a record.
      */

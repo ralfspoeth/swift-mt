@@ -29,8 +29,8 @@ class MtInputAdapterFactoryTest {
         assertAll(
                 () -> assertTrue(factory.reads("text/x-swift")),
                 () -> assertTrue(factory.reads("application/x-swift")),
-                () -> assertTrue(factory.reads("text/plain")),
                 () -> assertTrue(factory.reads("application/octet-stream")),
+                () -> assertFalse(factory.reads("text/plain")),
                 () -> assertFalse(factory.reads("text/csv")),
                 () -> assertFalse(factory.reads("application/xml")),
                 () -> assertFalse(factory.reads("application/json"))

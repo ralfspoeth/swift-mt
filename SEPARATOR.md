@@ -99,7 +99,7 @@ pattern over SWIFT content could want to say that it forbids.
 ## What the choice does not fix
 
 The separator is a named constant, `MtInputAdapter.SEPARATOR`, and
-`parseTags` splits on `Pattern.quote` of it rather than on the bare character -
+`parseRecordSelector` splits on `Pattern.quote` of it rather than on the bare character -
 `String.split` takes a regular expression, and a bare `|` there is an empty
 alternation that splits between every pair of characters. If the separator ever
 changes again, those are the two places, and the quoting is what keeps the split

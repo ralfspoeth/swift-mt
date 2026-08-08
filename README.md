@@ -52,13 +52,22 @@ braces; this adapter does not take them apart further, because what is worth
 extracting from them differs per message type and a regular expression says it
 more directly than a parser would.
 
-## Record selectors: a tag sequence
+## Record selectors
 
-A record selector is a list of tags separated by `~`, matched against the text
-block. It is required: xldr lets a record selector leave it out, and for a CSV
-or a fixed-length file that sensibly means "every record", but here a record
-*is* a tag sequence and an absent one names nothing. A spec that omits it is
-refused when the adapter is built, with the offending selector named.
+A record selector says how a record is cut out of the tags of block 4. The MT
+family groups its repetitions in more than one way, so there is more than one
+form; which applies is a property of the message type, and the spec says which
+rather than the adapter guessing.
+
+    ":61:~:86:"     a tag group - an opener and the tags that may follow it
+    "seq~:15B:"     a delimited sequence - category 3
+
+A selector is required: xldr lets a record selector leave it out, and for a CSV
+or a fixed-length file that sensibly means "every record", but here a record is
+a run of tags and an absent one names nothing. A spec that omits it is refused
+when the adapter is built, with the offending selector named.
+
+### A tag group
 
     ":61:~:86:"     one record per statement line and its information
     ":61:"          one record per statement line
@@ -90,9 +99,32 @@ over the same input pairs each information line with the *following* statement
 line, which is a different and probably wrong reading - and yields one record
 rather than two.
 
+### `seq~` - a delimited sequence
+
+The treasury messages of category 3 introduce their sequences with `:15A:`,
+`:15B:`, `:15C:` and so on. These delimiters are **start-only** - unlike
+`:16R:`/`:16S:` there is no closing field - so a sequence runs until the next
+delimiter of the same field number, or until the block ends. They do not nest.
+
+    "seq~:15B:"     Sequence B of an MT300: transaction details
+
+The delimiter family is derived from the opener rather than configured: `:15B:`
+implies `:15a:`, every option of field 15. Nothing about the number 15 is built
+in, so a message type delimiting with some other field behaves the same way.
+
+The delimiter is the record's own first tag and normally carries no value,
+standing alone on its line. That is why the members of such a record are
+addressed **by tag** rather than by position - see below.
+
+The `seq` prefix is a word rather than a tag so that the two forms cannot be
+confused: `":15B:"` on its own would otherwise have to mean either "one record
+per `:15B:`, holding that tag alone" or "the sequence `:15B:` opens", and
+guessing between them is the kind of thing that has cost this adapter a defect
+before.
+
 ## Field selectors: block, tag, pattern, group
 
-    [<block>]~[<tagNo>~]<pattern>~[<groupNo>]
+    [<block>]~[<tag>~]<pattern>~[<groupNo>]
 
 with `4` the default block, `0` the default tag and `0` the default group. Read
 it as: take this block, and within block 4 this tag of the record; match the
@@ -114,13 +146,23 @@ addressed by tag; every other block is handed over whole.
 | `2~.*~0` | the whole application header |
 | `~.*~0` | the first tag of the record, whole (block 4 by default) |
 | `~1~.*~0` | the second tag of the record, whole |
+| `~:30T:~.*~0` | the record's `:30T:`, wherever it sits |
 | `~([0-9]{6}).*~1` | the first six characters of the first tag - a value date |
 | `~1~.*UNIT/([0-9]+),~1` | a quantity out of `:AGGR//UNIT/1500,` - slashes and all |
 | `5~.*~0` | the whole trailer |
 
-Two things to note. `<tagNo>` is an **index into the record selector's tag
-list**, not a SWIFT tag number: with `":61:~:86:"`, tag `0` is the `:61:` content
-and tag `1` the `:86:`. And the pattern is matched with `matches()`, not `find()`
+`<tag>` says which tag of the record to read, and comes in two forms. A
+**number** counts from zero within the record: with `":61:~:86:"`, `0` is the
+`:61:` content and `1` the `:86:`. A **tag** names it: `:86:` reads the first tag
+of the record so called, and yields null where the record has none.
+
+Both forms work on both kinds of record, but each suits one. A tag group
+declares its tags, so counting is exact. A delimited sequence does not, and its
+members are mostly optional, so only a name identifies one - and a sequence that
+carries the same tag twice, as an MT300 Sequence B carries `:53A:` for each side
+of the trade, resolves to the first.
+
+The pattern is matched with `matches()`, not `find()`
 - it must describe the whole segment, which is why every example above ends in
 `.*`. A pattern that does not match the whole segment yields `null` for that
 field rather than an error, so the row still loads with the column empty.
@@ -163,12 +205,16 @@ in text and leaves types to the spec.
 
 ## MIME types
 
-The factory claims `text/x-swift`, `application/x-swift`, `text/plain` and
-`application/octet-stream`. The last two are worth a thought before deploying
-alongside other adapters: they are the natural MIME types for a fixed-length or
-delimited file too, and whichever factory `ServiceLoader` happens to return first
-wins. Prefer `text/x-swift` in a spec, and treat the generic two as a
-convenience for a feed that has no better name for its input.
+The factory claims `text/x-swift`, `application/x-swift` and
+`application/octet-stream`. Prefer one of the first two in a spec: they name the
+format, and nothing else will claim them.
+
+`text/plain` is deliberately **not** claimed. It is the natural MIME type for a
+delimited or fixed-length file as well, and whichever factory `ServiceLoader`
+returned first would win - so a SWIFT feed and a CSV feed on the same server
+would resolve by accident. `application/octet-stream` carries the same risk to a
+lesser degree and is kept only for feeds that have no better name for their
+input.
 
 ## Known limitations
 

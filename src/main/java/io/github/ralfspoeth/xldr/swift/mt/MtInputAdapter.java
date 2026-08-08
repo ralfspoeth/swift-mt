@@ -63,7 +63,131 @@ class MtInputAdapter implements InputAdapter {
      */
     private static final Pattern BLOCK_ID = Pattern.compile("[0-9A-Za-z]{1,3}");
 
-    record FieldSelector(String block, int tag, Pattern pattern, int group) {
+    /**
+     * One tag of the text block, as read.
+     */
+    record Tag(String name, String value) {}
+
+    /**
+     * How a record is cut out of the tags of the text block.
+     * <p>
+     * Sealed because the MT family groups its repetitions in more than one way
+     * and there is no reading of the text that covers them all. Which one a
+     * message uses is a property of its type, so the spec says which.
+     */
+    sealed interface RecordSelector permits TagGroup, DelimitedSequence {
+        /**
+         * The records this selector finds, each an ordered run of tags.
+         */
+        List<List<Tag>> records(List<Tag> tags);
+    }
+
+    /**
+     * An opener followed by a fixed run of further tags - the form the
+     * statement messages need, and the one this adapter started with.
+     */
+    record TagGroup(List<Pattern> tags) implements RecordSelector {
+        @Override
+        public List<List<Tag>> records(List<Tag> all) {
+            var records = new ArrayList<List<Tag>>();
+            var current = new ArrayList<Tag>();
+            int index = 0;
+            for (var tag : all) {
+                if (tags.get(index).matcher(tag.name()).matches()) {
+                    current.add(tag);
+                    index++;
+                }
+                if (index == tags.size()) {
+                    records.add(List.copyOf(current));
+                    index = 0;
+                    current.clear();
+                }
+            }
+            return records;
+        }
+    }
+
+    /**
+     * A sequence introduced by a delimiter field, as the treasury messages of
+     * category 3 use: {@code :15A:}, {@code :15B:}, {@code :15C:} and so on
+     * open Sequence A, B, C of an MT300 or MT320.
+     * <p>
+     * Unlike {@code :16R:} / {@code :16S:} these delimiters are
+     * <strong>start-only</strong> - there is no closing field. A sequence
+     * therefore runs until the next delimiter of the same field number, or until
+     * the block ends. They do not nest.
+     * <p>
+     * The delimiter family is derived from the opener rather than configured: an
+     * opener of {@code :15B:} makes the family {@code :15a:}, every option of
+     * field 15. Nothing about the number 15 is built in, so a message type that
+     * delimits with some other field works the same way.
+     * <p>
+     * The delimiter is itself the first tag of the record. Its value is normally
+     * empty - {@code :15B:} stands alone on its line - which is why the fields
+     * of such a record are addressed by tag rather than by position.
+     */
+    record DelimitedSequence(Pattern opener, Pattern family) implements RecordSelector {
+        @Override
+        public List<List<Tag>> records(List<Tag> all) {
+            var records = new ArrayList<List<Tag>>();
+            List<Tag> current = null;
+            for (var tag : all) {
+                if (opener.matcher(tag.name()).matches()) {
+                    current = new ArrayList<>();
+                    current.add(tag);
+                    records.add(current);
+                } else if (family.matcher(tag.name()).matches()) {
+                    // a sibling sequence: this one is over
+                    current = null;
+                } else if (current != null) {
+                    current.add(tag);
+                }
+            }
+            return records.stream().<List<Tag>>map(List::copyOf).toList();
+        }
+    }
+
+    /**
+     * Which tag of a record a field selector reads.
+     */
+    sealed interface TagRef permits ByPosition, ByName {
+        Optional<String> in(List<Tag> record);
+    }
+
+    /**
+     * The nth tag of the record, counting from zero - the form that suits a
+     * {@link TagGroup}, whose tags are a fixed run declared by the spec.
+     */
+    record ByPosition(int index) implements TagRef {
+        @Override
+        public Optional<String> in(List<Tag> record) {
+            // a position beyond the record names nothing, which is a null field
+            // rather than a failed load
+            return index < record.size() ? Optional.of(record.get(index).value()) : Optional.empty();
+        }
+    }
+
+    /**
+     * The first tag of the record with this name - the form a
+     * {@link DelimitedSequence} needs, whose members are many and mostly
+     * optional, so that counting them is not possible.
+     * <p>
+     * The <em>first</em>: a sequence may carry the same tag twice, as an MT300
+     * Sequence B carries {@code :53A:} for each side of the trade. Reaching the
+     * second is not expressible, and a spec that needs it should select a
+     * narrower record.
+     */
+    record ByName(Pattern tag) implements TagRef {
+        @Override
+        public Optional<String> in(List<Tag> record) {
+            return record.stream()
+                    .filter(t -> tag.matcher(t.name()).matches())
+                    .findFirst()
+                    .map(Tag::value);
+        }
+    }
+
+    record FieldSelector(String block, TagRef tag, Pattern pattern, int group) {
         FieldSelector {
             if (!BLOCK_ID.matcher(block).matches()) {
                 throw new IllegalArgumentException(
@@ -73,17 +197,17 @@ class MtInputAdapter implements InputAdapter {
         }
     }
 
-    record RecordSelector(List<Pattern> tags, Map<String, FieldSelector> fieldSelectors) {}
+    record Records(RecordSelector selector, Map<String, FieldSelector> fieldSelectors) {}
 
-    private final Map<String, RecordSelector> recordSelectors;
+    private final Map<String, Records> recordSelectors;
 
     public MtInputAdapter(InputSpec inputSpec) {
         recordSelectors = inputSpec.recordSelectors()
                 .stream()
                 .collect(toMap(
                         RecordSelectorSpec::name,
-                        rs -> new RecordSelector(
-                                parseTags(rs),
+                        rs -> new Records(
+                                parseRecordSelector(rs),
                                 rs.fieldSelectors()
                                         .stream()
                                         .collect(toMap(
@@ -122,7 +246,9 @@ class MtInputAdapter implements InputAdapter {
         } else {
             return new FieldSelector(
                     first == 0 ? TEXT_BLOCK : selector.substring(0, first),
-                    second == last ? 0 : parseInt(selector.substring(first + 1, second)),
+                    second == last
+                            ? new ByPosition(0)
+                            : tagRef(selector.substring(first + 1, second), selector),
                     // DOTALL, because a tag's content may run to several lines
                     // and a selector that says .* means the whole of it. Without
                     // it the commonest selector of all silently yields null on
@@ -139,39 +265,12 @@ class MtInputAdapter implements InputAdapter {
     }
 
     /**
-     * The tags a record is made of, in the order the message carries them,
-     * separated by {@link #SEPARATOR}.
-     * <p>
-     * A selector is required rather than defaulted. xldr lets a record selector
-     * leave it out, and for a CSV or a fixed-length file that sensibly means
-     * "every record"; here a record *is* a tag sequence, so an absent one names
-     * nothing and there is no reading of it that could be right. Refusing it
-     * outright beats loading a file that produces no rows and no complaint.
-     * <p>
-     * {@link RecordSelectorSpec#requireSelector()} does the refusing, both
-     * because it names the offending selector in the message - useful in a spec
-     * that declares several - and because it rejects a blank one, which
-     * {@code split} would otherwise turn into a single tag that matches nothing.
-     *
-     * @throws IllegalArgumentException if the spec left the selector out or left
-     *                                  it blank
-     */
-    private List<Pattern> parseTags(RecordSelectorSpec spec) {
-        // the quoted separator, not the bare character: split takes a regex, and
-        // a bare '|' is an empty alternation that matches between every pair of
-        // characters
-        return Stream.of(spec.requireSelector().split(SEPARATOR_REGEX))
-                .map(tag -> tagPattern(tag, spec.name()))
-                .toList();
-    }
-
-    /**
      * A tag as a spec writes it: {@code :20:}, {@code :62F:}, or {@code :62a:}.
      */
     private static final Pattern TAG_SELECTOR = Pattern.compile(":[0-9]{2}[A-Za-z]?:");
 
     /**
-     * Compiles one tag of a record selector.
+     * Compiles one tag of a selector.
      * <p>
      * A trailing <em>lower-case</em> {@code a} is the Message Reference Guide's
      * own notation for "this field, whatever its option letter": {@code 62a}
@@ -189,12 +288,83 @@ class MtInputAdapter implements InputAdapter {
      */
     private static Pattern tagPattern(String tag, String selectorName) {
         if (!TAG_SELECTOR.matcher(tag).matches()) {
-            throw new IllegalArgumentException("record selector '" + selectorName
+            throw new IllegalArgumentException("selector '" + selectorName
                     + "': '" + tag + "' is not a tag; expected :nn:, :nnA: or :nna:");
         }
         return tag.endsWith("a:")
                 ? Pattern.compile(":" + tag.substring(1, 3) + "[A-Z]?:")
                 : Pattern.compile(Pattern.quote(tag));
+    }
+
+    /**
+     * Marks a record selector that names a delimited sequence rather than a run
+     * of tags: {@code "seq~:15B:"}.
+     * <p>
+     * A word rather than a tag, because the two forms would otherwise be
+     * indistinguishable - {@code ":15B:"} alone could mean either "one record
+     * per :15B:, holding only that tag" or "the sequence :15B: opens". Guessing
+     * between them is exactly the kind of thing that has cost this adapter a
+     * defect before, so the spec says which.
+     */
+    private static final String SEQUENCE_PREFIX = "seq";
+
+    /**
+     * How the spec wants records cut out of the text block.
+     * <p>
+     * A selector is required rather than defaulted. xldr lets a record selector
+     * leave it out, and for a CSV or a fixed-length file that sensibly means
+     * "every record"; here a record is a run of tags, so an absent one names
+     * nothing and there is no reading of it that could be right. Refusing it
+     * outright beats loading a file that produces no rows and no complaint.
+     * <p>
+     * {@link RecordSelectorSpec#requireSelector()} does the refusing, both
+     * because it names the offending selector in the message - useful in a spec
+     * that declares several - and because it rejects a blank one, which
+     * {@code split} would otherwise turn into a single tag that matches nothing.
+     *
+     * @throws IllegalArgumentException if the selector is absent, blank, or not
+     *                                  one of the forms above
+     */
+    private RecordSelector parseRecordSelector(RecordSelectorSpec spec) {
+        // the quoted separator, not the bare character: split takes a regex, and
+        // a bare '|' would be an empty alternation matching between every pair
+        // of characters
+        var parts = spec.requireSelector().split(SEPARATOR_REGEX);
+        if (SEQUENCE_PREFIX.equals(parts[0])) {
+            if (parts.length != 2) {
+                throw new IllegalArgumentException("record selector '" + spec.name()
+                        + "': " + SEQUENCE_PREFIX + " takes exactly one delimiter tag, as in "
+                        + SEQUENCE_PREFIX + SEPARATOR + ":15B:");
+            }
+            var opener = parts[1];
+            return new DelimitedSequence(
+                    tagPattern(opener, spec.name()),
+                    // every option of the same field number: :15B: -> :15a:
+                    tagPattern(":" + opener.substring(1, 3) + "a:", spec.name()));
+        }
+        return new TagGroup(Stream.of(parts)
+                .map(tag -> tagPattern(tag, spec.name()))
+                .toList());
+    }
+
+    /**
+     * The tag part of a field selector: a number counts, a tag names.
+     * <p>
+     * Both forms are wanted, because the two record selectors differ in what can
+     * be relied on. A {@link TagGroup} declares its tags, so counting them is
+     * exact; a {@link DelimitedSequence} does not, and its members are mostly
+     * optional, so only a name identifies one.
+     */
+    private static TagRef tagRef(String part, String selector) {
+        if (TAG_SELECTOR.matcher(part).matches()) {
+            return new ByName(tagPattern(part, selector));
+        }
+        try {
+            return new ByPosition(parseInt(part));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("field selector '" + selector + "': '" + part
+                    + "' is neither a tag position nor a tag", e);
+        }
     }
 
     @Override
@@ -241,22 +411,23 @@ class MtInputAdapter implements InputAdapter {
         return blocks;
     }
 
-    private static List<Row> parseRows(final Map<String, String> blocks, final RecordSelector rs) {
-        List<Row> rows = new ArrayList<>();
-        // the tag list is never empty: parseTags refuses a spec without one
-        var tbMatcher = TEXT_BLOCK_PATTERN.matcher(blocks.getOrDefault(TEXT_BLOCK, ""));
-        List<String> tmpTags = new ArrayList<>();
-        int index = 0;
-        while (tbMatcher.find()) {
-            if (rs.tags.get(index).matcher(tbMatcher.group(1)).matches()) {
-                tmpTags.add(tbMatcher.group(2));
-                index++;
-            }
-            if (index == rs.tags.size()) {
-                rows.add(new Row() {
-                    // local copy of the tags just found
-                    final List<String> data = List.copyOf(tmpTags);
+    /**
+     * The tags of the text block, in the order the message carries them.
+     */
+    private static List<Tag> tagsOf(Map<String, String> blocks) {
+        var tags = new ArrayList<Tag>();
+        var matcher = TEXT_BLOCK_PATTERN.matcher(blocks.getOrDefault(TEXT_BLOCK, ""));
+        while (matcher.find()) {
+            tags.add(new Tag(matcher.group(1), matcher.group(2)));
+        }
+        return tags;
+    }
 
+    private static List<Row> parseRows(final Map<String, String> blocks, final Records rs) {
+        return rs.selector()
+                .records(tagsOf(blocks))
+                .stream()
+                .<Row>map(record -> new Row() {
                     @Override
                     public @Nullable Object get(String name) {
                         return ofNullable(rs.fieldSelectors().get(name))
@@ -265,27 +436,19 @@ class MtInputAdapter implements InputAdapter {
                     }
 
                     private Optional<Object> parseField(FieldSelector fs) {
-                        // the text block is the one addressed by tag; every
-                        // other block is handed over whole, and one the message
-                        // does not carry is simply not in the map
+                        // the text block is the one addressed by tag; every other
+                        // block is handed over whole, and one the message does not
+                        // carry is simply not in the map
                         var segment = TEXT_BLOCK.equals(fs.block())
-                                // a tag beyond the record's sequence names
-                                // nothing, which is a null field rather than a
-                                // failed load
-                                ? (fs.tag() < data.size() ? data.get(fs.tag()) : null)
+                                ? fs.tag().in(record).orElse(null)
                                 : blocks.get(fs.block());
                         if (segment == null) {
                             return Optional.empty();
                         }
-                        var matcher = fs.pattern.matcher(segment);
-                        return matcher.matches() ? Optional.of(matcher.group(fs.group)) : Optional.empty();
+                        var matcher = fs.pattern().matcher(segment);
+                        return matcher.matches() ? Optional.of(matcher.group(fs.group())) : Optional.empty();
                     }
-                });
-                // reset buffered input
-                index = 0;
-                tmpTags.clear();
-            }
-        }
-        return rows;
+                })
+                .toList();
     }
 }

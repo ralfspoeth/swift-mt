@@ -309,6 +309,94 @@ class MtInputAdapterTest {
         );
     }
 
+    // ---- delimited sequences, as category 3 uses them ------------------------
+
+    /**
+     * A {@code seq~} selector cuts the sequence a delimiter opens: everything
+     * from {@code :15B:} up to the next field-15 delimiter. Its members are
+     * addressed by tag, since a sequence declares no fixed run of them.
+     */
+    @Test
+    void readsTheSequenceAdelimiterOpens() throws IOException {
+        var rows = rows(Messages.MT300, selector("trade", "seq~:15B:",
+                        field("tradeDate", "~:30T:~.*~0"),
+                        field("valueDate", "~:30V:~.*~0"),
+                        field("rate", "~:36:~.*~0"),
+                        field("bought", "~:32B:~.*~0"),
+                        field("sold", "~:33B:~.*~0")),
+                "trade", Set.of("tradeDate", "valueDate", "rate", "bought", "sold"));
+
+        assertEquals(1, rows.size());
+        var row = rows.getFirst();
+        assertAll(
+                () -> assertEquals("20260806", row.get("tradeDate")),
+                () -> assertEquals("20260810", row.get("valueDate")),
+                () -> assertEquals("1,0850", row.get("rate")),
+                () -> assertEquals("EUR1000000,", row.get("bought")),
+                () -> assertEquals("USD1085000,", row.get("sold"))
+        );
+    }
+
+    /**
+     * The sequence stops at the next delimiter rather than running to the end of
+     * the block: {@code :24D:} belongs to Sequence C, not to B.
+     */
+    @Test
+    void endsAsequenceAtTheNextDelimiter() throws IOException {
+        var rows = rows(Messages.MT300, selector("trade", "seq~:15B:",
+                        field("inB", "~:30T:~.*~0"),
+                        field("inC", "~:24D:~.*~0")),
+                "trade", Set.of("inB", "inC"));
+
+        assertAll(
+                () -> assertEquals("20260806", rows.getFirst().get("inB")),
+                () -> assertNull(rows.getFirst().get("inC"), ":24D: is in sequence C")
+        );
+    }
+
+    /**
+     * Each delimiter selects its own sequence, so one message yields three
+     * different records depending on which is asked for.
+     */
+    @Test
+    void selectsEachSequenceSeparately() throws IOException {
+        assertAll(
+                () -> assertEquals("FXREF20260806001",
+                        rows(Messages.MT300, selector("s", "seq~:15A:", field("f", "~:20:~.*~0")),
+                                "s", Set.of("f")).getFirst().get("f")),
+                () -> assertEquals("PHON",
+                        rows(Messages.MT300, selector("s", "seq~:15C:", field("f", "~:24D:~.*~0")),
+                                "s", Set.of("f")).getFirst().get("f"))
+        );
+    }
+
+    /**
+     * A tag the sequence carries twice resolves to the first of them - the
+     * documented rule, and the reason a spec wanting the other side of the trade
+     * has to select a narrower record.
+     */
+    @Test
+    void takesTheFirstOfArepeatedTagInAsequence() throws IOException {
+        var rows = rows(Messages.MT300, selector("trade", "seq~:15B:",
+                        field("correspondent", "~:53A:~.*~0")),
+                "trade", Set.of("correspondent"));
+
+        assertEquals("BANKDEFFXXX", rows.getFirst().get("correspondent"),
+                ":53A: occurs twice in sequence B");
+    }
+
+    /**
+     * The delimiter is the record's own first tag, and carries no value.
+     */
+    @Test
+    void yieldsTheDelimiterItselfAsTheFirstTag() throws IOException {
+        var rows = rows(Messages.MT300, selector("trade", "seq~:15B:",
+                        field("delimiter", "~0~.*~0")),
+                "trade", Set.of("delimiter"));
+
+        assertEquals("", rows.getFirst().get("delimiter"));
+    }
+
     // ---- option letters ------------------------------------------------------
 
     /**
