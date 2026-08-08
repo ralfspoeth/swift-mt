@@ -6,7 +6,7 @@ import io.github.ralfspoeth.xldr.spec.DataType;
 import io.github.ralfspoeth.xldr.spec.FieldSelectorSpec;
 import io.github.ralfspoeth.xldr.spec.InputSpec;
 import io.github.ralfspoeth.xldr.spec.RecordSelectorSpec;
-import io.github.ralfspoeth.xldr.swift.mt.SwiftInputAdapterFactory;
+import io.github.ralfspoeth.xldr.swift.mt.MtInputAdapterFactory;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The adapter against whole messages, through the public surface only: a spec
  * goes in and rows come out, the way the loader uses it.
  */
-class SwiftInputAdapterTest {
+class MtInputAdapterTest {
 
     /**
      * The two halves of a booking: {@code :61:} is the line itself and
@@ -183,7 +183,7 @@ class SwiftInputAdapterTest {
      */
     @Test
     void yieldsNothingForAnUnknownRecordSelector() throws IOException {
-        var result = new SwiftInputAdapterFactory()
+        var result = new MtInputAdapterFactory()
                 .createInputAdapter(spec(selector("booking", ":61:", field("line", "~.*~0"))))
                 .parse(stream(Messages.MT940), "nosuchselector", Set.of("line"));
 
@@ -199,7 +199,7 @@ class SwiftInputAdapterTest {
      */
     @Test
     void yieldsNothingForInputThatIsNotAFinMessage() throws IOException {
-        var result = new SwiftInputAdapterFactory()
+        var result = new MtInputAdapterFactory()
                 .createInputAdapter(spec(selector("booking", ":61:", field("line", "~.*~0"))))
                 .parse(stream("id,name\n1,Alice\n"), "booking", Set.of("line"));
 
@@ -212,7 +212,7 @@ class SwiftInputAdapterTest {
      */
     @Test
     void exposesOnlyTheRequestedFields() throws IOException {
-        var result = new SwiftInputAdapterFactory()
+        var result = new MtInputAdapterFactory()
                 .createInputAdapter(spec(selector("booking", ":61:",
                         field("line", "~.*~0"),
                         field("valueDate", "~([0-9]{6}).*~1"))))
@@ -296,7 +296,7 @@ class SwiftInputAdapterTest {
                 List.of(field("line", "~.*~0"))));
         var blank = spec(new RecordSelectorSpec("booking", "  ",
                 List.of(field("line", "~.*~0"))));
-        var factory = new SwiftInputAdapterFactory();
+        var factory = new MtInputAdapterFactory();
 
         var thrown = assertThrows(IllegalArgumentException.class,
                 () -> factory.createInputAdapter(withoutSelector));
@@ -419,7 +419,7 @@ class SwiftInputAdapterTest {
 
     private static List<Row> rows(String message, RecordSelectorSpec rs, String name, Set<String> wanted)
             throws IOException {
-        try (var stream = new SwiftInputAdapterFactory()
+        try (var stream = new MtInputAdapterFactory()
                 .createInputAdapter(spec(rs))
                 .parse(stream(message), name, wanted)
                 .rows()) {

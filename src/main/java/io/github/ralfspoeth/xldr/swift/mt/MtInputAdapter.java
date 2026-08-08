@@ -20,7 +20,7 @@ import static java.lang.Integer.parseInt;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.toMap;
 
-class SwiftInputAdapter implements InputAdapter {
+class MtInputAdapter implements InputAdapter {
 
     private static final Pattern MT_PATTERN = Pattern.compile(
             "^\\{1:(.+?)}\\s*\\{2:([IO].+?)}\\s*(?:\\{3:(.+?)}\\s*)?\\{4:(.*?)-}\\s*(?:\\{5:(.+?)})?$",
@@ -77,7 +77,7 @@ class SwiftInputAdapter implements InputAdapter {
 
     private final Map<String, RecordSelector> recordSelectors;
 
-    public SwiftInputAdapter(InputSpec inputSpec) {
+    public MtInputAdapter(InputSpec inputSpec) {
         recordSelectors = inputSpec.recordSelectors()
                 .stream()
                 .collect(toMap(

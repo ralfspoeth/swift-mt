@@ -1,4 +1,4 @@
-# swift-ia
+# swift-mt
 
 An [xldr](https://github.com/ralfspoeth/xldr) input adapter for SWIFT FIN
 messages - MT940 statements, MT103 transfers, and the rest of the MT family.
@@ -73,7 +73,6 @@ so `:61:~:86:` over
 yields two records, and the `:62F:` at the end is ignored. **Only complete
 sequences produce a record**: a trailing `:61:` with no `:86:` after it is
 dropped rather than emitted with a missing half.
-
 
 A tag may be written with a lower-case `a` in place of its option letter, which
 is the Message Reference Guide's own notation: `:62a:` is field 62 in whichever

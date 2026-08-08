@@ -6,7 +6,7 @@ import io.github.ralfspoeth.xldr.spec.InputSpec;
 
 import java.util.Set;
 
-public class SwiftInputAdapterFactory implements InputAdapterFactory {
+public class MtInputAdapterFactory implements InputAdapterFactory {
 
     private static final Set<String> SWIFT_TYPES = Set.of(
             "text/x-swift",
@@ -21,6 +21,6 @@ public class SwiftInputAdapterFactory implements InputAdapterFactory {
 
     @Override
     public InputAdapter createInputAdapter(InputSpec spec) {
-        return new  SwiftInputAdapter(spec);
+        return new  MtInputAdapter(spec);
     }
 }

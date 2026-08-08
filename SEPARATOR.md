@@ -98,7 +98,7 @@ pattern over SWIFT content could want to say that it forbids.
 
 ## What the choice does not fix
 
-The separator is a named constant, `SwiftInputAdapter.SEPARATOR`, and
+The separator is a named constant, `MtInputAdapter.SEPARATOR`, and
 `parseTags` splits on `Pattern.quote` of it rather than on the bare character -
 `String.split` takes a regular expression, and a bare `|` there is an empty
 alternation that splits between every pair of characters. If the separator ever
