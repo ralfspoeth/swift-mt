@@ -14,6 +14,13 @@
     <artifactId>swift-mt</artifactId>
     <version>0.1-SNAPSHOT</version>
 
+
+    <scm>
+        <url>scm:git:https://github.com/ralfspoeth/swift-mt</url>
+        <developerConnection>scm:git:https://github.com/ralfspoeth/swift-mt.git</developerConnection>
+        <tag>HEAD</tag>
+    </scm>
+
     <properties>
         <maven.compiler.release>26</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
