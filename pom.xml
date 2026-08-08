@@ -29,6 +29,17 @@
             <artifactId>jspecify</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.github.ralfspoeth.xldr</groupId>
+            <artifactId>server</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>2.4.240</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
             <scope>test</scope>
@@ -40,7 +51,7 @@
             <dependency>
                 <groupId>io.github.ralfspoeth.xldr</groupId>
                 <artifactId>bom</artifactId>
-                <version>0.16</version>
+                <version>0.18</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -53,5 +64,23 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.5.2</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>
