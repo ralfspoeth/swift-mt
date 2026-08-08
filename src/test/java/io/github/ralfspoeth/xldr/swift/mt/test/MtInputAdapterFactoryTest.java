@@ -32,7 +32,9 @@ class MtInputAdapterFactoryTest {
                 () -> assertTrue(factory.reads("application/octet-stream")),
                 () -> assertFalse(factory.reads("text/plain")),
                 () -> assertFalse(factory.reads("text/csv")),
+                () -> assertFalse(factory.reads("text/xml")),
                 () -> assertFalse(factory.reads("application/xml")),
+                () -> assertFalse(factory.reads("text/json")),
                 () -> assertFalse(factory.reads("application/json"))
         );
     }
