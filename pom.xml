@@ -35,6 +35,14 @@
             <groupId>org.jspecify</groupId>
             <artifactId>jspecify</artifactId>
         </dependency>
+        <!--
+            provided rather than test: failsafe builds its module path from the
+            main artifact's dependencies, so a test-scoped module is left off it
+            and the run falls back to the classpath - where xldr's provides
+            clauses, declared in module-info and nowhere else, count for nothing.
+            provided keeps it off consumers' compile paths, being non-transitive,
+            while putting it where the integration test can be a module.
+        -->
         <dependency>
             <groupId>io.github.ralfspoeth.xldr</groupId>
             <artifactId>server</artifactId>

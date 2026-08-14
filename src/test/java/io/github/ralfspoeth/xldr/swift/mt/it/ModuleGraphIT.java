@@ -13,25 +13,49 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code ModuleGraphTest}, asked again under failsafe.
  * <p>
  * Duplicated rather than shared on purpose, because the runner is part of what
- * is being tested. These two once disagreed - the surefire pair green, the
- * failsafe pair red, one build, one module path, identical code - and that
- * disagreement was the finding. It cost four attempts to see, because a passing
- * unit test was twice taken as evidence that the service lookup was sound.
+ * is being tested. These two disagree - the surefire set green, this one red,
+ * one build, one dependency list, identical code - and that disagreement is the
+ * finding: {@code SwiftFeedIT} sat in a twenty-second timeout while the same
+ * assertions passed next door under surefire.
  * <p>
- * What it was hiding: xldr looked its own services up with the one-argument
- * {@link ServiceLoader#load(Class)}, which resolves against the <em>thread
- * context</em> class loader rather than the one that defined the service. What
- * that loader is during a forked test run is the runner's business, and the two
- * runners answered differently. {@code MappingSpecReader.of} then found nothing,
- * {@code readSpec} refused every spec with "unsupported mapping spec format",
- * and {@code SwiftFeedIT} sat in a twenty-second timeout while these same
- * assertions passed next door.
+ * The mechanism is what {@link #theXldrJarsAreOnTheModulePath} asks, and it is
+ * asked first because it decides what a failing service lookup means. xldr
+ * declares every service in {@code module-info} and ships no
+ * {@code META-INF/services} fallback, so its providers exist only while its jars
+ * are on the module path. On the classpath the types land in the unnamed module
+ * and every lookup comes back empty - which is what {@code readSpec} reports as
+ * "unsupported mapping spec format", and what stops a feed coming up for a
+ * reason that has nothing to do with the feed.
  * <p>
- * xldr 0.24 names the defining loader, here and in the server. This class stays
- * because the failure was invisible from anywhere else, and because the next
- * thing to break the module graph will not announce itself either.
+ * A previous reading blamed the thread context class loader. That was wrong:
+ * naming the defining loader, in xldr 0.24 and in these tests, changed nothing
+ * here. Worth keeping as a note, since the two explanations look alike from the
+ * outside and only one of them is testable in a line.
  */
 class ModuleGraphIT {
+
+    /**
+     * Whether the xldr modules are modules here at all.
+     * <p>
+     * This is asked first because it decides what the other two mean. A
+     * {@code provides} clause lives in {@code module-info} and is read only when
+     * the jar is on the module path; on the classpath the type is in the unnamed
+     * module and the clause may as well not exist, since xldr ships no
+     * {@code META-INF/services} fallback. So a service lookup that finds nothing
+     * is not evidence about loaders or about xldr - it is evidence about how this
+     * runner assembled the path.
+     */
+    @Test
+    void theXldrJarsAreOnTheModulePath() {
+        var spec = MappingSpecReader.class.getModule();
+        var ia = InputAdapterFactory.class.getModule();
+        assertTrue(spec.isNamed() && ia.isNamed(),
+                "xldr is on the classpath rather than the module path here: "
+                        + MappingSpecReader.class.getName() + " is in module '" + spec.getName()
+                        + "', " + InputAdapterFactory.class.getName() + " in '" + ia.getName()
+                        + "'. An unnamed module has no provides clauses, so every ServiceLoader"
+                        + " lookup below it will come back empty however it is written.");
+    }
 
     @Test
     void theSpecReadersAreOnTheModulePathUnderFailsafeToo() {

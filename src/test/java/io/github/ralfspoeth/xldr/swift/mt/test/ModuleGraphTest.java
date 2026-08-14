@@ -30,6 +30,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ModuleGraphTest {
 
     /**
+     * Whether the xldr modules are modules here at all.
+     * <p>
+     * This is asked first because it decides what the other two mean. A
+     * {@code provides} clause lives in {@code module-info} and is read only when
+     * the jar is on the module path; on the classpath the type is in the unnamed
+     * module and the clause may as well not exist, since xldr ships no
+     * {@code META-INF/services} fallback. So a service lookup that finds nothing
+     * is not evidence about loaders or about xldr - it is evidence about how this
+     * runner assembled the path.
+     */
+    @Test
+    void theXldrJarsAreOnTheModulePath() {
+        var spec = MappingSpecReader.class.getModule();
+        var ia = InputAdapterFactory.class.getModule();
+        assertTrue(spec.isNamed() && ia.isNamed(),
+                "xldr is on the classpath rather than the module path here: "
+                        + MappingSpecReader.class.getName() + " is in module '" + spec.getName()
+                        + "', " + InputAdapterFactory.class.getName() + " in '" + ia.getName()
+                        + "'. An unnamed module has no provides clauses, so every ServiceLoader"
+                        + " lookup below it will come back empty however it is written.");
+    }
+
+    /**
      * The server reads a feed's spec through {@code MappingSpecReader.of}, which
      * is a {@code ServiceLoader} lookup. With no provider it throws
      * "unsupported mapping spec format", {@code reconcile} catches it, the feed

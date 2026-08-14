@@ -6,7 +6,6 @@ import io.github.ralfspoeth.xldr.spec.DataType;
 import io.github.ralfspoeth.xldr.spec.FieldSelectorSpec;
 import io.github.ralfspoeth.xldr.spec.InputSpec;
 import io.github.ralfspoeth.xldr.spec.RecordSelectorSpec;
-import io.github.ralfspoeth.xldr.swift.mt.MtInputAdapterFactory;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -22,7 +21,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MtInputAdapterFactoryTest {
 
-    private final MtInputAdapterFactory factory = new MtInputAdapterFactory();
+    private final InputAdapterFactory factory;
+
+    public MtInputAdapterFactoryTest() {
+        this.factory = ServiceLoader.load(InputAdapterFactory.class)
+                .stream()
+                .map(ServiceLoader.Provider::get)
+                .filter(ia -> ia.reads("text/x-swift"))
+                .findFirst()
+                .orElseThrow();
+    }
 
     @Test
     void readsTheSwiftMimeTypes() {
@@ -61,7 +69,7 @@ class MtInputAdapterFactoryTest {
         var found = ServiceLoader.load(InputAdapterFactory.class, InputAdapterFactory.class.getClassLoader())
                 .stream()
                 .map(ServiceLoader.Provider::get)
-                .filter(f -> f instanceof MtInputAdapterFactory)
+                .filter(f -> f.getClass().getName().equals("io.github.ralfspoeth.xldr.swift.mt.MtInputAdapterFactory"))
                 .count();
 
         assertEquals(1L, found, "the module should provide exactly one SWIFT factory");
