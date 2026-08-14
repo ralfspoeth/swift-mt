@@ -58,7 +58,7 @@ class MtInputAdapterFactoryTest {
      */
     @Test
     void isDiscoveredAsAservice() {
-        var found = ServiceLoader.load(InputAdapterFactory.class)
+        var found = ServiceLoader.load(InputAdapterFactory.class, InputAdapterFactory.class.getClassLoader())
                 .stream()
                 .map(ServiceLoader.Provider::get)
                 .filter(f -> f instanceof MtInputAdapterFactory)
@@ -136,21 +136,21 @@ class MtInputAdapterFactoryTest {
 
     private InputAdapter adapterFor(String recordSelector) {
         return factory.createInputAdapter(new InputSpec(
-                "text/x-swift", null, null,
+                "text/x-swift",
                 List.of(new RecordSelectorSpec("r", recordSelector,
-                        List.of(new FieldSelectorSpec("f", "~.*~0", DataType.STRING)))),
+                        List.of(new FieldSelectorSpec("f", "~.*~0", DataType.TEXT)))),
                 List.of(), Map.of()));
     }
 
     private InputAdapter adapterWith(String fieldSelector) {
         return factory.createInputAdapter(new InputSpec(
-                "text/x-swift", null, null,
+                "text/x-swift",
                 List.of(new RecordSelectorSpec("r", ":20:",
-                        List.of(new FieldSelectorSpec("f", fieldSelector, DataType.STRING)))),
+                        List.of(new FieldSelectorSpec("f", fieldSelector, DataType.TEXT)))),
                 List.of(), Map.of()));
     }
 
     private static InputSpec spec(String mimeType) {
-        return new InputSpec(mimeType, null, null, List.of(), List.of(), Map.of());
+        return new InputSpec(mimeType, List.of(), List.of(), Map.of());
     }
 }

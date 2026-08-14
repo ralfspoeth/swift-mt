@@ -176,22 +176,30 @@ Group `0` is the whole match, exactly as `Matcher.group(0)` means it.
 ## A worked example
 
 For an MT940 statement, one row per booking with the value date, the amount side
-and the free-text information:
+and the free-text information. The feed is two files - how the statements arrive,
+which is the deployment's business, and what to do with them, which is the
+mapping's. Beside the spec:
+
+```properties
+# delivery.properties
+accepts = glob:*.sta
+```
+
+and the spec itself:
 
 ```json
 {
   "input": {
     "mimeType": "text/x-swift",
-    "accepts": "glob:*.sta",
     "recordSelectors": [
       {
         "name": "booking",
         "selector": ":61:~:86:",
         "fieldSelectors": [
-          {"name": "account",   "selector": "1~.*~0",                "type": "STRING"},
-          {"name": "valueDate", "selector": "~([0-9]{6}).*~1",       "type": "STRING"},
-          {"name": "side",      "selector": "~[0-9]{10}([CD]).*~1",  "type": "STRING"},
-          {"name": "info",      "selector": "~1~.*~0",               "type": "STRING"}
+          {"name": "account",   "selector": "1~.*~0",                "type": "TEXT"},
+          {"name": "valueDate", "selector": "~([0-9]{6}).*~1",       "type": "TEXT"},
+          {"name": "side",      "selector": "~[0-9]{10}([CD]).*~1",  "type": "TEXT"},
+          {"name": "info",      "selector": "~1~.*~0",               "type": "TEXT"}
         ]
       }
     ]

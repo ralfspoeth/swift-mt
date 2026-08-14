@@ -516,7 +516,7 @@ class MtInputAdapterTest {
     }
 
     private static InputSpec spec(RecordSelectorSpec... selectors) {
-        return new InputSpec("text/x-swift", null, null, List.of(selectors), List.of(), Map.of());
+        return new InputSpec("text/x-swift", List.of(selectors), List.of(), Map.of());
     }
 
     private static RecordSelectorSpec selector(String name, String tags, FieldSelectorSpec... fields) {
@@ -524,7 +524,7 @@ class MtInputAdapterTest {
     }
 
     private static FieldSelectorSpec field(String name, String selector) {
-        return new FieldSelectorSpec(name, selector, DataType.STRING);
+        return new FieldSelectorSpec(name, selector, DataType.TEXT);
     }
 
     private static ByteArrayInputStream stream(String text) {

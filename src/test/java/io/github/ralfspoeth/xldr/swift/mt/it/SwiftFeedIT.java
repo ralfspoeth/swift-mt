@@ -1,13 +1,19 @@
 package io.github.ralfspoeth.xldr.swift.mt.it;
 
-import io.github.ralfspoeth.xldr.server.AppConfig;
+import io.github.ralfspoeth.xldr.server.Config;
+import io.github.ralfspoeth.xldr.server.Delivery;
+import io.github.ralfspoeth.xldr.server.ServerMXBean;
 import io.github.ralfspoeth.xldr.server.Watcher;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import javax.management.JMX;
+import javax.management.ObjectName;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.DriverManager;
@@ -17,6 +23,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.function.BooleanSupplier;
+import java.util.logging.ConsoleHandler;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -44,14 +53,29 @@ class SwiftFeedIT {
     private static final Duration TIMEOUT = Duration.ofSeconds(20);
 
     private Path root;
-    private Path staging;
     private Watcher watcher;
+
+    /**
+     * The server says why a feed did not come up at DEBUG, and JUL's console
+     * handler starts at INFO, so the one line worth having is the one thrown
+     * away. This is done in code rather than left to {@code logging.properties}
+     * alone so that it holds when the test is run from an IDE too, which does
+     * not pass the build's system properties.
+     */
+    @BeforeAll
+    static void showWhatTheServerIsThinking() {
+        var handler = new ConsoleHandler();
+        handler.setLevel(Level.ALL);
+        var log = Logger.getLogger("io.github.ralfspoeth.xldr");
+        log.addHandler(handler);
+        log.setLevel(Level.ALL);
+    }
 
     @BeforeEach
     void setUp() throws Exception {
         root = Files.createTempDirectory("swift-root");
         // the same file system as the feed, so ATOMIC_MOVE works
-        staging = Files.createTempDirectory("swift-staging");
+        Path staging = Files.createTempDirectory("swift-staging");
         try (var conn = DriverManager.getConnection(JDBC_URL);
              var stmt = conn.createStatement()) {
             stmt.execute("drop table if exists booking");
@@ -65,8 +89,7 @@ class SwiftFeedIT {
 
         // ConnectionSource is a functional interface, so the whole of the
         // "bring your own database access" story is this lambda
-        watcher = new Watcher(AppConfig.of(props), () -> DriverManager.getConnection(JDBC_URL));
-        watcher.start();
+        watcher = Watcher.watch(Config.of(props), () -> DriverManager.getConnection(JDBC_URL));
     }
 
     @AfterEach
@@ -83,6 +106,9 @@ class SwiftFeedIT {
     @Timeout(60)
     void loadsAnMt940StatementDroppedIntoAfeed() throws Exception {
         var feed = Files.createDirectory(root.resolve("statements"));
+        // two files now: how the statements arrive, and what to do with them.
+        // The delivery file is what makes the directory a feed at all.
+        Files.writeString(feed.resolve(Delivery.FILE), "accepts = glob:*.sta\n");
         Files.writeString(feed.resolve("spec.json"), SPEC);
         await("in/ to be created", () -> Files.isDirectory(feed.resolve("in")));
 
@@ -127,7 +153,12 @@ class SwiftFeedIT {
         return rows;
     }
 
-    private static void await(String what, BooleanSupplier condition) throws InterruptedException {
+    /**
+     * The timeout carries what the server made of the feed, because otherwise
+     * every way of failing to bring one up looks the same from here - a
+     * stopwatch running out - and the reason is somewhere in a log.
+     */
+    private void await(String what, BooleanSupplier condition) throws InterruptedException {
         var deadline = System.nanoTime() + TIMEOUT.toNanos();
         while (System.nanoTime() < deadline) {
             if (condition.getAsBoolean()) {
@@ -135,7 +166,44 @@ class SwiftFeedIT {
             }
             Thread.sleep(Duration.ofMillis(50));
         }
-        throw new AssertionError("timed out waiting for " + what);
+        throw new AssertionError("timed out waiting for " + what + "\n" + diagnosis());
+    }
+
+    /**
+     * What is on disk, and what the server thinks it has. Between them these
+     * separate the three ways this can fail: the files are not where the test
+     * believes (the tree is wrong), they are there and the server has no feed
+     * (it read one of them and refused), or it has the feed as PENDING (it read
+     * the delivery file and refused the spec).
+     */
+    private String diagnosis() {
+        var out = new StringBuilder("  root: ").append(root).append('\n');
+        try (var tree = Files.walk(root)) {
+            tree.sorted().forEach(p -> out.append("    ")
+                    .append(root.relativize(p))
+                    .append(Files.isDirectory(p) ? "/" : "")
+                    .append('\n'));
+        } catch (IOException e) {
+            out.append("    cannot walk it: ").append(e).append('\n');
+        }
+        try {
+            var status = JMX.newMXBeanProxy(
+                    ManagementFactory.getPlatformMBeanServer(),
+                    new ObjectName("io.github.ralfspoeth.xldr:type=Server"),
+                    ServerMXBean.class);
+            out.append("  activeFeeds=").append(status.getActiveFeeds())
+                    .append(" filesWaiting=").append(status.getFilesWaiting()).append('\n');
+            var feeds = status.getFeeds();
+            if (feeds.isEmpty()) {
+                out.append("    the server has registered no feed at all\n");
+            }
+            feeds.forEach((name, feed) -> out.append("    ").append(name)
+                    .append(" state=").append(feed.state())
+                    .append(" waiting=").append(feed.filesWaiting()).append('\n'));
+        } catch (Exception e) {
+            out.append("  no server bean: ").append(e).append('\n');
+        }
+        return out.toString();
     }
 
     private static final String MT940 = """
@@ -156,15 +224,14 @@ class SwiftFeedIT {
             {
               "input": {
                 "mimeType": "text/x-swift",
-                "accepts": "glob:*.sta",
                 "recordSelectors": [
                   {
                     "name": "booking",
                     "selector": ":61:~:86:",
                     "fieldSelectors": [
-                      {"name": "valueDate", "selector": "~([0-9]{6}).*~1",      "type": "STRING"},
-                      {"name": "side",      "selector": "~[0-9]{10}([CD]).*~1", "type": "STRING"},
-                      {"name": "info",      "selector": "~1~.*~0",              "type": "STRING"}
+                      {"name": "valueDate", "selector": "~([0-9]{6}).*~1",      "type": "TEXT"},
+                      {"name": "side",      "selector": "~[0-9]{10}([CD]).*~1", "type": "TEXT"},
+                      {"name": "info",      "selector": "~1~.*~0",              "type": "TEXT"}
                     ]
                   }
                 ]
