@@ -35,14 +35,8 @@
             <groupId>org.jspecify</groupId>
             <artifactId>jspecify</artifactId>
         </dependency>
-        <!--
-            provided rather than test: failsafe builds its module path from the
-            main artifact's dependencies, so a test-scoped module is left off it
-            and the run falls back to the classpath - where xldr's provides
-            clauses, declared in module-info and nowhere else, count for nothing.
-            provided keeps it off consumers' compile paths, being non-transitive,
-            while putting it where the integration test can be a module.
-        -->
+        <!-- only the integration test drives the server; the adapter itself
+             knows nothing about it -->
         <dependency>
             <groupId>io.github.ralfspoeth.xldr</groupId>
             <artifactId>server</artifactId>
@@ -85,7 +79,17 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
-                <version>3.5.2</version>
+                <!--
+                    No version and no executions: the parent pins 3.5.5 and
+                    already binds integration-test and verify. Pinning 3.5.2 here
+                    cost four rounds of debugging - that version forks with
+                    JarManifestForkConfiguration and builds no module path at
+                    all, so every xldr jar landed in the unnamed module, every
+                    provides clause went unread, and the server could not find a
+                    spec reader. Surefire, on the parent's 3.5.5, used
+                    ModularClasspathForkConfiguration and was fine, which is why
+                    the unit tests passed while the integration tests did not.
+                -->
                 <configuration>
                     <!-- one line on purpose: the value is not trimmed, and a path
                          with a newline in it is silently unopenable -->
@@ -93,14 +97,6 @@
                         <java.util.logging.config.file>${project.build.testOutputDirectory}/logging.properties</java.util.logging.config.file>
                     </systemPropertyVariables>
                 </configuration>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>integration-test</goal>
-                            <goal>verify</goal>
-                        </goals>
-                    </execution>
-                </executions>
             </plugin>
         </plugins>
     </build>

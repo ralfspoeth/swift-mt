@@ -13,24 +13,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code ModuleGraphTest}, asked again under failsafe.
  * <p>
  * Duplicated rather than shared on purpose, because the runner is part of what
- * is being tested. These two disagree - the surefire set green, this one red,
- * one build, one dependency list, identical code - and that disagreement is the
- * finding: {@code SwiftFeedIT} sat in a twenty-second timeout while the same
- * assertions passed next door under surefire.
+ * is being tested, and these two once disagreed: the surefire set green, this
+ * one red, one build, one dependency list, identical code. That disagreement was
+ * the finding, and it took four rounds to see because it looks from the outside
+ * like a fault in the code.
  * <p>
- * The mechanism is what {@link #theXldrJarsAreOnTheModulePath} asks, and it is
- * asked first because it decides what a failing service lookup means. xldr
- * declares every service in {@code module-info} and ships no
- * {@code META-INF/services} fallback, so its providers exist only while its jars
- * are on the module path. On the classpath the types land in the unnamed module
- * and every lookup comes back empty - which is what {@code readSpec} reports as
- * "unsupported mapping spec format", and what stops a feed coming up for a
- * reason that has nothing to do with the feed.
+ * It was not. This module pinned maven-failsafe-plugin to 3.5.2 while the parent
+ * pins 3.5.5 for both runners. 3.5.2 forks with {@code
+ * JarManifestForkConfiguration} and builds no module path at all, where 3.5.5
+ * uses {@code ModularClasspathForkConfiguration} and reads the test module
+ * descriptor. So every xldr jar arrived in the unnamed module - which is what
+ * {@link #theXldrJarsAreOnTheModulePath} prints - and since xldr declares its
+ * services in {@code module-info} with no {@code META-INF/services} fallback,
+ * every lookup came back empty. {@code readSpec} then refused every spec with
+ * "unsupported mapping spec format" and {@code SwiftFeedIT} sat in a
+ * twenty-second timeout, for a reason having nothing to do with the feed.
  * <p>
- * A previous reading blamed the thread context class loader. That was wrong:
- * naming the defining loader, in xldr 0.24 and in these tests, changed nothing
- * here. Worth keeping as a note, since the two explanations look alike from the
- * outside and only one of them is testable in a line.
+ * Two earlier readings blamed the field type names and then the thread context
+ * class loader. Both were wrong, and naming the defining loader - in xldr 0.24
+ * and in these tests - changed nothing here. Kept as a note because a service
+ * lookup that finds nothing looks the same whatever the cause, and only the
+ * module question distinguishes them in a line.
  */
 class ModuleGraphIT {
 
@@ -62,8 +65,8 @@ class ModuleGraphIT {
         assertTrue(MappingSpecReader.of(Path.of("spec.json")).isPresent(),
                 "ServiceLoader found no MappingSpecReader for spec.json under failsafe."
                         + " If ModuleGraphTest passes and this does not, the difference is the"
-                        + " runner rather than the code, and the lookup has gone back to"
-                        + " resolving against the thread context class loader.");
+                        + " runner rather than the code - check that failsafe and surefire are"
+                        + " on the same version, and that the fork built a module path at all.");
     }
 
     @Test

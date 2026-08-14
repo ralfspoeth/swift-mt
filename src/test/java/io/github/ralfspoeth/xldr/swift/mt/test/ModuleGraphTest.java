@@ -23,9 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * ask the question directly, in milliseconds - so the answer arrives as a test
  * name rather than as a line in a log somebody has to find.
  * <p>
- * The companion {@code ModuleGraphIT} asks the same two things under failsafe,
- * which is not redundant: what a runner forks is part of what is under test,
- * and these two once disagreed. See there.
+ * The companion {@code ModuleGraphIT} asks the same three things under failsafe,
+ * which is not redundant: what a runner forks is part of what is under test, and
+ * these two once disagreed for a whole afternoon. See there for what it was.
  */
 class ModuleGraphTest {
 
