@@ -143,7 +143,7 @@ class MtInputAdapter implements InputAdapter {
                     current.add(tag);
                 }
             }
-            return records.stream().<List<Tag>>map(List::copyOf).toList();
+            return records.stream().map(List::copyOf).toList();
         }
     }
 
