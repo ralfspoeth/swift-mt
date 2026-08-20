@@ -122,6 +122,16 @@ per `:15B:`, holding that tag alone" or "the sequence `:15B:` opens", and
 guessing between them is the kind of thing that has cost this adapter a defect
 before.
 
+### Never a discriminator
+
+A record selector here says `selector` and nothing else. xldr's flat adapters -
+CSV and fixed length - take a `discriminator` instead, which picks records out of
+a file where every line is a candidate and the only question is which to keep. An
+MT record is *located* rather than filtered: a tag group, or a sequence its opener
+delimits. So a spec carrying a discriminator has confused this format with a flat
+one, and is refused by name when the adapter is built rather than loading whatever
+the selector alone produced.
+
 ## Field selectors: block, tag, pattern, group
 
     [<block>]~[<tag>~]<pattern>~[<groupNo>]
@@ -131,6 +141,13 @@ it as: take this block, and within block 4 this tag of the record; match the
 pattern against it; hand over this capture group. The separator is a tilde
 because it is the one character absent from every SWIFT character set that is
 also inert in a regular expression - see [SEPARATOR.md](SEPARATOR.md).
+
+A field says this with `selector` and never with `nth`. Since xldr 0.32 a field
+may count instead of naming - the n-th field of a line, the n-th child element -
+and here it is refused when the adapter is built. An MT record is a run of tags
+addressed by their number, the same number may repeat inside one record, and the
+n-th tag is therefore neither what a spec means nor stable between two messages
+of a type. The fixed-length adapter refuses `nth` for the same shape of reason.
 
 `<block>` is a block *identifier*, not a number from 1 to 5. The standard defines
 it as one to three alphanumeric characters, and the five numbered blocks are only

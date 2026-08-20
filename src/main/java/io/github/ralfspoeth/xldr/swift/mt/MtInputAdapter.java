@@ -212,7 +212,7 @@ class MtInputAdapter implements InputAdapter {
                                         .stream()
                                         .collect(toMap(
                                                         FieldSelectorSpec::name,
-                                                        fs -> parseFields(fs.selector())
+                                                        fs -> parseFields(fs.requireText(NOT_COUNTED))
                                                 )
                                         )
                         )
@@ -230,6 +230,20 @@ class MtInputAdapter implements InputAdapter {
      * {@code §} were each rejected.
      */
     static final char SEPARATOR = '~';
+
+    /**
+     * Why a field selector here is never an {@code nth}.
+     * <p>
+     * xldr's other adapters that count are counting something a record is made
+     * of - the fields of a line, the elements of an array, the children of an
+     * element. A SWIFT record is a run of tags addressed by their number, and the
+     * same number may appear more than once in one record, so the n-th tag is
+     * neither what a spec means nor stable between two messages of the same type.
+     * Refused when the adapter is built, as the fixed-length adapter refuses it
+     * and for the same reason.
+     */
+    private static final String NOT_COUNTED =
+            "an MT record is a run of tags addressed by number, with no components to count";
 
     /** {@link #SEPARATOR} as a regex, for {@link String#split(String)}. */
     private static final String SEPARATOR_REGEX = Pattern.quote(String.valueOf(SEPARATOR));
@@ -326,6 +340,18 @@ class MtInputAdapter implements InputAdapter {
      *                                  one of the forms above
      */
     private RecordSelector parseRecordSelector(RecordSelectorSpec spec) {
+        // A discriminator picks records out of a flat file, where every line is a
+        // candidate and the question is which to keep. Here the records have to
+        // be located - a tag group, or a sequence an opener delimits - so there
+        // is nothing for one to filter. Named and refused rather than ignored,
+        // since a spec carrying one has confused this format with a flat one and
+        // would otherwise load whatever the selector alone produced.
+        if (spec.discriminator() != null) {
+            throw new IllegalArgumentException("record selector '" + spec.name()
+                    + "' carries a discriminator, " + spec.discriminator() + ", but an MT record is"
+                    + " located rather than filtered: every record selector here says which tags a"
+                    + " record is cut from. Use 'selector'");
+        }
         // the quoted separator, not the bare character: split takes a regex, and
         // a bare '|' would be an empty alternation matching between every pair
         // of characters

@@ -3,9 +3,11 @@ package io.github.ralfspoeth.xldr.swift.mt.test;
 import io.github.ralfspoeth.xldr.ia.Field;
 import io.github.ralfspoeth.xldr.ia.Row;
 import io.github.ralfspoeth.xldr.spec.DataType;
+import io.github.ralfspoeth.xldr.spec.Discriminator;
 import io.github.ralfspoeth.xldr.spec.FieldSelectorSpec;
 import io.github.ralfspoeth.xldr.spec.InputSpec;
 import io.github.ralfspoeth.xldr.spec.RecordSelectorSpec;
+import io.github.ralfspoeth.xldr.spec.Selector;
 import io.github.ralfspoeth.xldr.swift.mt.MtInputAdapterFactory;
 import org.junit.jupiter.api.Test;
 
@@ -513,6 +515,52 @@ class MtInputAdapterTest {
                 .rows()) {
             return stream.toList();
         }
+    }
+
+    /**
+     * A field selector counts nothing here.
+     * <p>
+     * xldr 0.32 let a field say {@code nth} instead of {@code selector}, meaning
+     * the n-th component of the record - the n-th field of a line, the n-th child
+     * element. An MT record is a run of tags addressed by their number, and the
+     * same number may repeat within one record, so the n-th tag is neither what a
+     * spec means nor stable between two messages of a type. Refused when the
+     * adapter is built, as the fixed-length adapter refuses it.
+     */
+    @Test
+    void refusesAcountingFieldSelector() {
+        var counting = spec(new RecordSelectorSpec("booking", ":61:",
+                List.of(new FieldSelectorSpec("line", new Selector.Nth(1), DataType.TEXT))));
+        var thrown = assertThrows(IllegalArgumentException.class,
+                () -> new MtInputAdapterFactory().createInputAdapter(counting));
+        assertAll(
+                () -> assertTrue(thrown.getMessage().contains("line"),
+                        "should name the field: " + thrown.getMessage()),
+                () -> assertTrue(thrown.getMessage().contains("no components to count"),
+                        thrown.getMessage()));
+    }
+
+    /**
+     * And a record selector carries no discriminator.
+     * <p>
+     * A discriminator picks records out of a flat file, where every line is a
+     * candidate. An MT record is located instead - a tag group, or a sequence an
+     * opener delimits - so there is nothing for one to filter. Ignoring it would
+     * load whatever the selector alone produced, which is the shape of defect
+     * this adapter refuses elsewhere.
+     */
+    @Test
+    void refusesArecordSelectorWithAdiscriminator() {
+        var filtered = spec(new RecordSelectorSpec("booking", null,
+                new Discriminator.Equals(new Selector.Text(":61:"), "C"),
+                List.of(field("line", "~.*~0"))));
+        var thrown = assertThrows(IllegalArgumentException.class,
+                () -> new MtInputAdapterFactory().createInputAdapter(filtered));
+        assertAll(
+                () -> assertTrue(thrown.getMessage().contains("booking"),
+                        "should name the record selector: " + thrown.getMessage()),
+                () -> assertTrue(thrown.getMessage().contains("located rather than filtered"),
+                        thrown.getMessage()));
     }
 
     private static InputSpec spec(RecordSelectorSpec... selectors) {
