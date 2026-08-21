@@ -6,6 +6,7 @@ import io.github.ralfspoeth.xldr.spec.DataType;
 import io.github.ralfspoeth.xldr.spec.Discriminator;
 import io.github.ralfspoeth.xldr.spec.FieldSelectorSpec;
 import io.github.ralfspoeth.xldr.spec.InputSpec;
+import io.github.ralfspoeth.xldr.spec.Locator;
 import io.github.ralfspoeth.xldr.spec.RecordSelectorSpec;
 import io.github.ralfspoeth.xldr.spec.Selector;
 import io.github.ralfspoeth.xldr.swift.mt.MtInputAdapterFactory;
@@ -287,28 +288,42 @@ class MtInputAdapterTest {
     }
 
     /**
-     * xldr lets a record selector leave the selector out, and this adapter
-     * refuses it: a SWIFT record is a tag sequence, so an absent one names
-     * nothing. It is refused when the adapter is built, not when a file
-     * arrives, and the message names the selector at fault.
+     * xldr lets a record selector leave the selector out - {@link Locator.Every}
+     * - and this adapter refuses it: a SWIFT record is a tag sequence, so
+     * saying nothing names nothing. Refused when the adapter is built rather
+     * than when a file arrives, and the message names the selector at fault.
      */
     @Test
     void refusesARecordSelectorWithoutASelector() {
-        var withoutSelector = spec(new RecordSelectorSpec("booking", null,
+        var withoutSelector = spec(new RecordSelectorSpec("booking", Locator.every(),
                 List.of(field("line", "~.*~0"))));
-        var blank = spec(new RecordSelectorSpec("booking", "  ",
-                List.of(field("line", "~.*~0"))));
-        var factory = new MtInputAdapterFactory();
 
         var thrown = assertThrows(IllegalArgumentException.class,
-                () -> factory.createInputAdapter(withoutSelector));
+                () -> new MtInputAdapterFactory().createInputAdapter(withoutSelector));
         assertAll(
                 () -> assertTrue(thrown.getMessage().contains("booking"),
                         "the message should name the selector: " + thrown.getMessage()),
-                () -> assertThrows(IllegalArgumentException.class,
-                        () -> factory.createInputAdapter(blank),
-                        "a blank selector would otherwise split into one tag that matches nothing")
+                () -> assertTrue(thrown.getMessage().contains("selector"),
+                        "and say what to write instead: " + thrown.getMessage())
         );
+    }
+
+    /**
+     * A blank selector never reaches this adapter at all, which is new in xldr
+     * 0.35 and one refusal fewer to carry.
+     * <p>
+     * This module used to lean on {@code requireSelector} to reject one, because
+     * {@code "  "} would otherwise split into a single tag that matches nothing
+     * - a spec that loads no rows and says nothing about why.
+     * {@link Locator.At} now refuses a blank selector when it is constructed, so
+     * the spec cannot be built to hand over. Asserted here rather than assumed:
+     * it is a guarantee this adapter relies on and does not own.
+     */
+    @Test
+    void ablankSelectorCannotEvenBeConstructed() {
+        var thrown = assertThrows(IllegalArgumentException.class,
+                () -> new Locator.At("  "));
+        assertTrue(thrown.getMessage().contains("blank"), thrown.getMessage());
     }
 
     // ---- delimited sequences, as category 3 uses them ------------------------
@@ -361,7 +376,7 @@ class MtInputAdapterTest {
      * different records depending on which is asked for.
      */
     @Test
-    void selectsEachSequenceSeparately() throws IOException {
+    void selectsEachSequenceSeparately() {
         assertAll(
                 () -> assertEquals("FXREF20260806001",
                         rows(Messages.MT300, selector("s", "seq~:15A:", field("f", "~:20:~.*~0")),
@@ -529,7 +544,7 @@ class MtInputAdapterTest {
      */
     @Test
     void refusesAcountingFieldSelector() {
-        var counting = spec(new RecordSelectorSpec("booking", ":61:",
+        var counting = spec(new RecordSelectorSpec("booking", new Locator.At(":61:"),
                 List.of(new FieldSelectorSpec("line", new Selector.Nth(1), DataType.TEXT))));
         var thrown = assertThrows(IllegalArgumentException.class,
                 () -> new MtInputAdapterFactory().createInputAdapter(counting));
@@ -551,8 +566,8 @@ class MtInputAdapterTest {
      */
     @Test
     void refusesArecordSelectorWithAdiscriminator() {
-        var filtered = spec(new RecordSelectorSpec("booking", null,
-                new Discriminator.Equals(new Selector.Text(":61:"), "C"),
+        var filtered = spec(new RecordSelectorSpec("booking",
+                new Locator.Where(new Discriminator.Equals(new Selector.Text(":61:"), "C")),
                 List.of(field("line", "~.*~0"))));
         var thrown = assertThrows(IllegalArgumentException.class,
                 () -> new MtInputAdapterFactory().createInputAdapter(filtered));
@@ -568,7 +583,7 @@ class MtInputAdapterTest {
     }
 
     private static RecordSelectorSpec selector(String name, String tags, FieldSelectorSpec... fields) {
-        return new RecordSelectorSpec(name, tags, List.of(fields));
+        return new RecordSelectorSpec(name, new Locator.At(tags), List.of(fields));
     }
 
     private static FieldSelectorSpec field(String name, String selector) {

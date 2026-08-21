@@ -6,6 +6,7 @@ import io.github.ralfspoeth.xldr.ia.Result;
 import io.github.ralfspoeth.xldr.ia.Row;
 import io.github.ralfspoeth.xldr.spec.FieldSelectorSpec;
 import io.github.ralfspoeth.xldr.spec.InputSpec;
+import io.github.ralfspoeth.xldr.spec.Locator;
 import io.github.ralfspoeth.xldr.spec.RecordSelectorSpec;
 import org.jspecify.annotations.Nullable;
 
@@ -245,7 +246,9 @@ class MtInputAdapter implements InputAdapter {
     private static final String NOT_COUNTED =
             "an MT record is a run of tags addressed by number, with no components to count";
 
-    /** {@link #SEPARATOR} as a regex, for {@link String#split(String)}. */
+    /**
+     * {@link #SEPARATOR} as a regex, for {@link String#split(String)}.
+     */
     private static final String SEPARATOR_REGEX = Pattern.quote(String.valueOf(SEPARATOR));
 
     private FieldSelector parseFields(String selector) {
@@ -331,46 +334,48 @@ class MtInputAdapter implements InputAdapter {
      * nothing and there is no reading of it that could be right. Refusing it
      * outright beats loading a file that produces no rows and no complaint.
      * <p>
-     * {@link RecordSelectorSpec#requireSelector()} does the refusing, both
-     * because it names the offending selector in the message - useful in a spec
-     * that declares several - and because it rejects a blank one, which
-     * {@code split} would otherwise turn into a single tag that matches nothing.
+     * The two cases this adapter cannot honour raise their complaint through
+     * {@link Locator#wrongBecause(String, String)}, which names the offending record selector -
+     * useful in a spec that declares several - and says what the author wrote
+     * rather than what they left out.
+     * <p>
+     * A blank selector no longer needs refusing here. This module used to lean
+     * on {@code RecordSelectorSpec.requireSelector} for it, because {@code "  "}
+     * would otherwise split into one tag that matches nothing; since xldr 0.35
+     * {@link Locator.At} refuses a blank selector when it is constructed, so
+     * such a spec cannot be built to hand over.
      *
-     * @throws IllegalArgumentException if the selector is absent, blank, or not
-     *                                  one of the forms above
+     * @throws IllegalArgumentException if the records are not located, or the
+     *                                  selector is not one of the forms above
      */
     private RecordSelector parseRecordSelector(RecordSelectorSpec spec) {
         // A discriminator picks records out of a flat file, where every line is a
-        // candidate and the question is which to keep. Here the records have to
-        // be located - a tag group, or a sequence an opener delimits - so there
-        // is nothing for one to filter. Named and refused rather than ignored,
-        // since a spec carrying one has confused this format with a flat one and
-        // would otherwise load whatever the selector alone produced.
-        if (spec.discriminator() != null) {
-            throw new IllegalArgumentException("record selector '" + spec.name()
-                    + "' carries a discriminator, " + spec.discriminator() + ", but an MT record is"
-                    + " located rather than filtered: every record selector here says which tags a"
-                    + " record is cut from. Use 'selector'");
-        }
-        // the quoted separator, not the bare character: split takes a regex, and
-        // a bare '|' would be an empty alternation matching between every pair
-        // of characters
-        var parts = spec.requireSelector().split(SEPARATOR_REGEX);
-        if (SEQUENCE_PREFIX.equals(parts[0])) {
-            if (parts.length != 2) {
-                throw new IllegalArgumentException("record selector '" + spec.name()
-                        + "': " + SEQUENCE_PREFIX + " takes exactly one delimiter tag, as in "
-                        + SEQUENCE_PREFIX + SEPARATOR + ":15B:");
+        // candidate and the question is which to keep; saying nothing means every
+        // record is one. An MT record is located instead - a tag group, or a
+        // sequence an opener delimits - so neither reading is available here.
+        var because = "an MT record is located rather than filtered: every record selector"
+                + " here says which tags a record is cut from";
+        return switch (spec.locator()) {
+            case Locator.Where where -> throw where.wrongBecause(spec.name(), because);
+            case Locator.Every every -> throw every.wrongBecause(spec.name(), because);
+            case Locator.At(var selector) -> {
+                var parts = selector.split(SEPARATOR_REGEX);
+                if (SEQUENCE_PREFIX.equals(parts[0])) {
+                    if (parts.length != 2) {
+                        throw new IllegalArgumentException("record selector '" + spec.name()
+                                + "': " + SEQUENCE_PREFIX + " takes exactly one delimiter tag, as in "
+                                + SEQUENCE_PREFIX + SEPARATOR + ":15B:");
+                    }
+                    var opener = parts[1];
+                    yield new DelimitedSequence(
+                            tagPattern(opener, spec.name()),
+                            // every option of the same field number: :15B: -> :15a:
+                            tagPattern(":" + opener.substring(1, 3) + "a:", spec.name()));
+                } else yield new TagGroup(Stream.of(parts)
+                        .map(tag -> tagPattern(tag, spec.name()))
+                        .toList());
             }
-            var opener = parts[1];
-            return new DelimitedSequence(
-                    tagPattern(opener, spec.name()),
-                    // every option of the same field number: :15B: -> :15a:
-                    tagPattern(":" + opener.substring(1, 3) + "a:", spec.name()));
-        }
-        return new TagGroup(Stream.of(parts)
-                .map(tag -> tagPattern(tag, spec.name()))
-                .toList());
+        };
     }
 
     /**

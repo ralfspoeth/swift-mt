@@ -5,6 +5,7 @@ import io.github.ralfspoeth.xldr.ia.InputAdapterFactory;
 import io.github.ralfspoeth.xldr.spec.DataType;
 import io.github.ralfspoeth.xldr.spec.FieldSelectorSpec;
 import io.github.ralfspoeth.xldr.spec.InputSpec;
+import io.github.ralfspoeth.xldr.spec.Locator;
 import io.github.ralfspoeth.xldr.spec.RecordSelectorSpec;
 import org.junit.jupiter.api.Test;
 
@@ -145,7 +146,7 @@ class MtInputAdapterFactoryTest {
     private InputAdapter adapterFor(String recordSelector) {
         return factory.createInputAdapter(new InputSpec(
                 "text/x-swift",
-                List.of(new RecordSelectorSpec("r", recordSelector,
+                List.of(new RecordSelectorSpec("r", new Locator.At(recordSelector),
                         List.of(new FieldSelectorSpec("f", "~.*~0", DataType.TEXT)))),
                 List.of(), Map.of()));
     }
@@ -153,7 +154,7 @@ class MtInputAdapterFactoryTest {
     private InputAdapter adapterWith(String fieldSelector) {
         return factory.createInputAdapter(new InputSpec(
                 "text/x-swift",
-                List.of(new RecordSelectorSpec("r", ":20:",
+                List.of(new RecordSelectorSpec("r", new Locator.At(":20:"),
                         List.of(new FieldSelectorSpec("f", fieldSelector, DataType.TEXT)))),
                 List.of(), Map.of()));
     }
