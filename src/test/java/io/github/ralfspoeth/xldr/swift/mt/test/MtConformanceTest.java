@@ -8,6 +8,7 @@ import io.github.ralfspoeth.xldr.spec.Locator;
 import io.github.ralfspoeth.xldr.spec.RecordSelectorSpec;
 import io.github.ralfspoeth.xldr.swift.mt.MtInputAdapterFactory;
 import io.github.ralfspoeth.xldr.tck.InputAdapterContract;
+import org.jspecify.annotations.NonNull;
 
 import java.util.List;
 import java.util.Map;
@@ -38,12 +39,12 @@ class MtConformanceTest extends InputAdapterContract {
      * have to go through {@code InputAdapterFactory.of}.
      */
     @Override
-    protected InputAdapterFactory factory() {
+    protected @NonNull InputAdapterFactory factory() {
         return new MtInputAdapterFactory();
     }
 
     @Override
-    protected String mimeType() {
+    protected @NonNull String mimeType() {
         return "text/x-swift";
     }
 
@@ -55,7 +56,7 @@ class MtConformanceTest extends InputAdapterContract {
      * European CSV.
      */
     @Override
-    protected InputSpec spec() {
+    protected @NonNull InputSpec spec() {
         return new InputSpec("text/x-swift",
                 List.of(new RecordSelectorSpec("bookings", new Locator.At(":61:"), List.of(
                         new FieldSelectorSpec("valueDate", "~([0-9]{6}).*~1", DataType.DATE),
@@ -67,7 +68,7 @@ class MtConformanceTest extends InputAdapterContract {
 
     /** FIN is an ASCII wire format, so the sample is what actually arrives. */
     @Override
-    protected byte[] sample() {
+    protected byte @NonNull [] sample() {
         return Messages.MT940.getBytes(US_ASCII);
     }
 }
