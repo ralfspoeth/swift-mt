@@ -208,15 +208,17 @@ and the spec itself:
 {
   "input": {
     "mimeType": "text/x-swift",
+    "properties": { "dateFormat": "yyMMdd", "numberFormat": "#0.00", "locale": "de-DE" },
     "recordSelectors": [
       {
         "name": "booking",
         "selector": ":61:~:86:",
         "fieldSelectors": [
-          {"name": "account",   "selector": "1~.*~0",                "type": "TEXT"},
-          {"name": "valueDate", "selector": "~([0-9]{6}).*~1",       "type": "TEXT"},
-          {"name": "side",      "selector": "~[0-9]{10}([CD]).*~1",  "type": "TEXT"},
-          {"name": "info",      "selector": "~1~.*~0",               "type": "TEXT"}
+          {"name": "account",   "selector": "1~.*~0",                       "type": "TEXT"},
+          {"name": "valueDate", "selector": "~([0-9]{6}).*~1",              "type": "DATE"},
+          {"name": "amount",    "selector": "~[0-9]{10}[CD]([0-9,]+)N.*~1", "type": "DECIMAL"},
+          {"name": "side",      "selector": "~[0-9]{10}([CD]).*~1",         "type": "TEXT"},
+          {"name": "info",      "selector": "~1~.*~0",                      "type": "TEXT"}
         ]
       }
     ]
@@ -224,9 +226,29 @@ and the spec itself:
 }
 ```
 
-`valueDate` arrives as `260806` - six characters of `yymmdd`. Convert it in the
-mapping rather than here, with `${parse(valueDate, 'yyMMdd')}`: the adapter deals
-in text and leaves types to the spec.
+## Types
+
+A field's declared `type` is honoured, the way every other xldr adapter honours
+it: the selector cuts a piece of text out of the message, and the shared
+conversion turns it into what the spec asked for.
+
+The two properties above are what make that work, and neither is specific to this
+adapter. A value date is `YYMMDD` and an amount marks its decimal with a comma,
+which is not what `LocalDateTime.parse` or `BigDecimal` read by default - so a
+spec says `dateFormat` and a `locale` exactly as it would for a European CSV. A
+field that declares no type, or declares `TEXT`, gets the matched text unchanged.
+
+`${parse(text, 'pattern')}` in the mapping is still there and is still the right
+tool for the odd column whose notation differs from the rest of the feed. It
+reads dates and timestamps only, though, so an amount has no equivalent - which
+is the reason the type belongs on the field rather than in the mapping.
+
+> This adapter used to ignore `type` altogether: every value came back a
+> `String` and every field reported `String.class`, so a spec asking for a
+> `DECIMAL` amount got text and the loader bound text into a numeric column,
+> without a word. The advice here was to convert in the mapping instead, which
+> works for `valueDate` and has nothing to offer for `amount` - `parse` reads
+> dates and timestamps, and there is no numeric counterpart.
 
 ## MIME types
 

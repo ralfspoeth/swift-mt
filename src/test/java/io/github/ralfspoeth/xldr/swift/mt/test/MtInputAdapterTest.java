@@ -14,7 +14,9 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -227,6 +229,48 @@ class MtInputAdapterTest {
     }
 
     /**
+     * A declared type is honoured, through the feed's own patterns.
+     * <p>
+     * It was not, until 0.2: every field came back a {@code String} and every
+     * {@code Field} said {@code String.class}, whatever the spec declared. A spec
+     * asking for a {@code DECIMAL} amount got text, and the loader bound text into
+     * a numeric column - so this adapter met none of the typing contract the other
+     * five keep, and nothing said so because nothing in the SPI states it.
+     * <p>
+     * Both patterns here are properties of the message family rather than of this
+     * adapter: a value date is {@code YYMMDD} and an amount marks its decimal with
+     * a comma, so a spec says {@code dateFormat} and a {@code locale} exactly as
+     * one would for a European CSV. That is the point - the type machinery is the
+     * shared one, and there is nothing SWIFT-specific in it.
+     */
+    @Test
+    void honoursTheDeclaredTypeUsingTheFeedsPatterns() throws IOException {
+        var typed = spec(Map.of("dateFormat", "yyMMdd", "numberFormat", "#0.00", "locale", "de-DE"),
+                selector("booking", ":61:",
+                        field("valueDate", "~([0-9]{6}).*~1", DataType.DATE),
+                        field("amount", "~[0-9]{10}[CD]([0-9,]+)N.*~1", DataType.DECIMAL),
+                        field("side", "~[0-9]{10}([CD]).*~1")));
+
+        var result = new MtInputAdapterFactory()
+                .createInputAdapter(typed)
+                .parse(stream(Messages.MT940), "booking", Set.of("valueDate", "amount", "side"));
+
+        assertEquals(
+                Map.of("valueDate", LocalDateTime.class, "amount", BigDecimal.class, "side", String.class),
+                result.fields().stream().collect(Collectors.toMap(Field::name, Field::type)),
+                "the declared type reaches the loader as the field's type");
+
+        var first = result.rows().toList().getFirst();
+        assertAll(
+                () -> assertEquals(LocalDateTime.of(2026, 8, 6, 0, 0), first.get("valueDate"),
+                        "a date-only pattern is the start of that day"),
+                () -> assertEquals(new BigDecimal("1250.00"), first.get("amount"),
+                        "the comma is the decimal mark, and the value is exact"),
+                () -> assertEquals("D", first.get("side"), "an undeclared type is still text")
+        );
+    }
+
+    /**
      * A tag runs until the next one, so its content may be several lines, and a
      * real {@code :86:} usually is. Neither the separating line break nor the
      * one before {@code -}} belongs to it.
@@ -404,6 +448,12 @@ class MtInputAdapterTest {
 
     /**
      * The delimiter is the record's own first tag, and carries no value.
+     * <p>
+     * Empty and absent are different here, which is why a {@code TEXT} field is
+     * handed the matched text rather than being put through the shared
+     * conversion: that reads a blank value as absent, and a delimiter tag is
+     * present and says nothing. The pattern matched, so there is a value, and it
+     * is the empty string.
      */
     @Test
     void yieldsTheDelimiterItselfAsTheFirstTag() throws IOException {
@@ -412,6 +462,25 @@ class MtInputAdapterTest {
                 "trade", Set.of("delimiter"));
 
         assertEquals("", rows.getFirst().get("delimiter"));
+    }
+
+    /**
+     * The other side of that: with a type declared, an empty match <em>is</em>
+     * absent, because no date and no amount is spelled with no characters.
+     */
+    @Test
+    void anEmptyMatchIsAbsentWhereAtypeIsDeclared() throws IOException {
+        var typed = spec(Map.of("dateFormat", "yyMMdd"),
+                selector("trade", "seq~:15B:",
+                        field("whenever", "~0~.*~0", DataType.DATE)));
+
+        var rows = new MtInputAdapterFactory()
+                .createInputAdapter(typed)
+                .parse(stream(Messages.MT300), "trade", Set.of("whenever"))
+                .rows().toList();
+
+        assertNull(rows.getFirst().get("whenever"),
+                "the delimiter matched and carried nothing, which is no date at all");
     }
 
     // ---- option letters ------------------------------------------------------
@@ -579,7 +648,11 @@ class MtInputAdapterTest {
     }
 
     private static InputSpec spec(RecordSelectorSpec... selectors) {
-        return new InputSpec("text/x-swift", List.of(selectors), List.of(), Map.of());
+        return spec(Map.of(), selectors);
+    }
+
+    private static InputSpec spec(Map<String, String> properties, RecordSelectorSpec... selectors) {
+        return new InputSpec("text/x-swift", List.of(selectors), List.of(), properties);
     }
 
     private static RecordSelectorSpec selector(String name, String tags, FieldSelectorSpec... fields) {
@@ -588,6 +661,10 @@ class MtInputAdapterTest {
 
     private static FieldSelectorSpec field(String name, String selector) {
         return new FieldSelectorSpec(name, selector, DataType.TEXT);
+    }
+
+    private static FieldSelectorSpec field(String name, String selector, DataType type) {
+        return new FieldSelectorSpec(name, selector, type);
     }
 
     private static ByteArrayInputStream stream(String text) {

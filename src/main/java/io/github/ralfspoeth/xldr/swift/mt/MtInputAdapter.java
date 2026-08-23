@@ -1,9 +1,11 @@
 package io.github.ralfspoeth.xldr.swift.mt;
 
 import io.github.ralfspoeth.xldr.ia.Field;
+import io.github.ralfspoeth.xldr.ia.Formats;
 import io.github.ralfspoeth.xldr.ia.InputAdapter;
 import io.github.ralfspoeth.xldr.ia.Result;
 import io.github.ralfspoeth.xldr.ia.Row;
+import io.github.ralfspoeth.xldr.spec.DataType;
 import io.github.ralfspoeth.xldr.spec.FieldSelectorSpec;
 import io.github.ralfspoeth.xldr.spec.InputSpec;
 import io.github.ralfspoeth.xldr.spec.Locator;
@@ -188,7 +190,11 @@ class MtInputAdapter implements InputAdapter {
         }
     }
 
-    record FieldSelector(String block, TagRef tag, Pattern pattern, int group) {
+    /**
+     * @param type what the spec says this field is; {@link DataType#TEXT} where it
+     *             said nothing, which is the rule every adapter follows
+     */
+    record FieldSelector(String block, TagRef tag, Pattern pattern, int group, DataType type) {
         FieldSelector {
             if (!BLOCK_ID.matcher(block).matches()) {
                 throw new IllegalArgumentException(
@@ -202,7 +208,21 @@ class MtInputAdapter implements InputAdapter {
 
     private final Map<String, Records> recordSelectors;
 
+    /**
+     * The feed's date and number patterns, applied to what a selector matched.
+     * <p>
+     * An MT field is text in a shape the standard fixes - a value date as
+     * {@code YYMMDD}, an amount with a comma for the decimal mark - and neither is
+     * what {@code LocalDateTime.parse} or {@code BigDecimal} read by default. So a
+     * spec that declares a {@code DATE} or a {@code DECIMAL} here says
+     * {@code dateFormat: yyMMdd} or a {@code locale} whose decimal separator is a
+     * comma beside it, exactly as one would for a European CSV, and the shared
+     * {@link Formats} does the rest.
+     */
+    private final Formats formats;
+
     public MtInputAdapter(InputSpec inputSpec) {
+        formats = Formats.of(inputSpec.properties());
         recordSelectors = inputSpec.recordSelectors()
                 .stream()
                 .collect(toMap(
@@ -213,11 +233,17 @@ class MtInputAdapter implements InputAdapter {
                                         .stream()
                                         .collect(toMap(
                                                         FieldSelectorSpec::name,
-                                                        fs -> parseFields(fs.requireText(NOT_COUNTED))
+                                                        fs -> parseFields(fs.requireText(NOT_COUNTED),
+                                                                typeOf(fs))
                                                 )
                                         )
                         )
                 ));
+    }
+
+    /** what the spec declared, or {@code TEXT} where it declared nothing */
+    private static DataType typeOf(FieldSelectorSpec fs) {
+        return fs.dataType() == null ? DataType.TEXT : fs.dataType();
     }
 
     /**
@@ -251,7 +277,7 @@ class MtInputAdapter implements InputAdapter {
      */
     private static final String SEPARATOR_REGEX = Pattern.quote(String.valueOf(SEPARATOR));
 
-    private FieldSelector parseFields(String selector) {
+    private FieldSelector parseFields(String selector, DataType type) {
         int first = selector.indexOf(SEPARATOR);
         int second = selector.indexOf(SEPARATOR, first + 1);
         int last = selector.lastIndexOf(SEPARATOR);
@@ -276,7 +302,8 @@ class MtInputAdapter implements InputAdapter {
                                     selector.substring(second + 1, last),
                             Pattern.DOTALL
                     ),
-                    last == selector.length() - 1 ? 0 : parseInt(selector.substring(last + 1))
+                    last == selector.length() - 1 ? 0 : parseInt(selector.substring(last + 1)),
+                    type
             );
         }
     }
@@ -406,10 +433,10 @@ class MtInputAdapter implements InputAdapter {
             var rs = recordSelectors.get(recordSelector);
             if (rs != null && matcher.matches()) {
                 var blocks = blocksOf(matcher);
-                var fields = rs.fieldSelectors.keySet()
+                var fields = rs.fieldSelectors.entrySet()
                         .stream()
-                        .filter(fieldSelectors::contains)
-                        .map(s -> new Field(s, String.class))
+                        .filter(e -> fieldSelectors.contains(e.getKey()))
+                        .map(e -> new Field(e.getKey(), e.getValue().type().clazz()))
                         .toList();
                 List<Row> rows = parseRows(blocks, rs);
                 return new Result(fields, rows.stream());
@@ -454,7 +481,25 @@ class MtInputAdapter implements InputAdapter {
         return tags;
     }
 
-    private static List<Row> parseRows(final Map<String, String> blocks, final Records rs) {
+    /**
+     * What a matched selector yields, as the field declared it.
+     * <p>
+     * {@code TEXT} is handed back untouched rather than going through
+     * {@link Formats}, which reads a blank value as absent. Here it is not: a
+     * delimiter such as {@code :15B:} is a tag that is present and carries
+     * nothing, and that is the whole of what it says. This adapter can tell an
+     * empty match from no match at all - the pattern matched, or it did not - so
+     * it should, as the XML adapter keeps an empty element distinct from a
+     * missing one and for the same reason.
+     * <p>
+     * With a type declared, blank really is absent: there is no date and no
+     * amount that an empty string could be.
+     */
+    private @Nullable Object valueOf(FieldSelector fs, String matched) {
+        return fs.type() == DataType.TEXT ? matched : formats.parse(fs.type(), matched);
+    }
+
+    private List<Row> parseRows(final Map<String, String> blocks, final Records rs) {
         return rs.selector()
                 .records(tagsOf(blocks))
                 .stream()
@@ -477,7 +522,9 @@ class MtInputAdapter implements InputAdapter {
                             return Optional.empty();
                         }
                         var matcher = fs.pattern().matcher(segment);
-                        return matcher.matches() ? Optional.of(matcher.group(fs.group())) : Optional.empty();
+                        return matcher.matches()
+                                ? ofNullable(valueOf(fs, matcher.group(fs.group())))
+                                : Optional.empty();
                     }
                 })
                 .toList();
