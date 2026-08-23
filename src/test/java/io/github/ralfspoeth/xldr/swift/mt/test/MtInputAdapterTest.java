@@ -183,19 +183,36 @@ class MtInputAdapterTest {
     }
 
     /**
-     * A record selector the spec does not declare is not an error: the adapter
-     * is asked for one selector at a time and answers for the ones it knows.
+     * A record selector the spec does not declare is refused, and so is a field
+     * selector the record selector has not got.
+     * <p>
+     * This used to yield nothing instead, on the argument that the adapter is
+     * asked for one selector at a time and answers for the ones it knows. That
+     * mistakes who is asking: the loader calls {@code parse} once per record
+     * mapping and always with a name the spec declared, so a name that is not
+     * declared can only be a typo in a mapping - and this is the one place it can
+     * surface. Yielding nothing meant a mistyped mapping loaded zero rows and
+     * reported success, which is the failure this toolkit spends its releases
+     * removing. Every other adapter refuses, and the SPI's contract says so.
+     * <p>
+     * A file that is not a FIN message keeps the old answer, and rightly: that is
+     * a fact about the input rather than about the spec.
      */
     @Test
-    void yieldsNothingForAnUnknownRecordSelector() throws IOException {
-        var result = new MtInputAdapterFactory()
-                .createInputAdapter(spec(selector("booking", ":61:", field("line", "~.*~0"))))
-                .parse(stream(Messages.MT940), "nosuchselector", Set.of("line"));
+    void refusesAselectorTheSpecDoesNotDeclare() {
+        var adapter = new MtInputAdapterFactory()
+                .createInputAdapter(spec(selector("booking", ":61:", field("line", "~.*~0"))));
+
+        var record = assertThrows(IllegalArgumentException.class,
+                () -> adapter.parse(stream(Messages.MT940), "nosuchselector", Set.of("line")));
+        var fld = assertThrows(IllegalArgumentException.class,
+                () -> adapter.parse(stream(Messages.MT940), "booking", Set.of("nosuchfield")));
 
         assertAll(
-                () -> assertEquals(List.of(), result.fields()),
-                () -> assertEquals(0, result.rows().count())
-        );
+                () -> assertTrue(record.getMessage().contains("nosuchselector"), record.getMessage()),
+                () -> assertTrue(record.getMessage().contains("booking"),
+                        "and says which names are declared: " + record.getMessage()),
+                () -> assertTrue(fld.getMessage().contains("nosuchfield"), fld.getMessage()));
     }
 
     /**

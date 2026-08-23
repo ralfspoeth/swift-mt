@@ -431,7 +431,22 @@ class MtInputAdapter implements InputAdapter {
             var contents = ais.readAllAsString();
             var matcher = MT_PATTERN.matcher(contents);
             var rs = recordSelectors.get(recordSelector);
-            if (rs != null && matcher.matches()) {
+            // a name the spec does not declare is a typo in a mapping, and this
+            // is the only place it can surface. It used to fall into the same
+            // empty result as a file that is not an MT message at all, so a
+            // mistyped mapping loaded nothing and reported success
+            if (rs == null) {
+                throw new IllegalArgumentException("no record selector named " + recordSelector
+                        + "; the input spec declares " + recordSelectors.keySet());
+            }
+            var unknown = fieldSelectors.stream()
+                    .filter(name -> !rs.fieldSelectors().containsKey(name))
+                    .toList();
+            if (!unknown.isEmpty()) {
+                throw new IllegalArgumentException("record selector " + recordSelector
+                        + " declares no field selector(s) " + unknown);
+            }
+            if (matcher.matches()) {
                 var blocks = blocksOf(matcher);
                 var fields = rs.fieldSelectors.entrySet()
                         .stream()
@@ -441,6 +456,8 @@ class MtInputAdapter implements InputAdapter {
                 List<Row> rows = parseRows(blocks, rs);
                 return new Result(fields, rows.stream());
             } else {
+                // the file is not a FIN message: a fact about the input rather
+                // than about the spec, so no records rather than a refusal
                 return new Result(List.of(), Stream.of());
             }
         }
