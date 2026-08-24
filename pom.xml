@@ -21,7 +21,7 @@
     </scm>
 
     <properties>
-        <maven.compiler.release>26</maven.compiler.release>
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
@@ -29,7 +29,7 @@
         <!-- the dependencies needed to play well with xldr -->
         <dependency>
             <groupId>io.github.ralfspoeth.xldr</groupId>
-            <artifactId>ia</artifactId>
+            <artifactId>ia-def</artifactId>
         </dependency>
         <dependency>
             <groupId>org.jspecify</groupId>
@@ -65,7 +65,7 @@
             <dependency>
                 <groupId>io.github.ralfspoeth.xldr</groupId>
                 <artifactId>bom</artifactId>
-                <version>0.39</version>
+                <version>0.42</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
