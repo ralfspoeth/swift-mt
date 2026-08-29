@@ -1,7 +1,7 @@
 # swift-mt
 
 An [xldr](https://github.com/ralfspoeth/xldr) input adapter for SWIFT FIN
-messages - MT940 statements, MT103 transfers, and the rest of the MT family.
+MT messages
 
 It is a separate project rather than a module of the toolkit because nothing in
 xldr needs it: the adapter is found at run time through `ServiceLoader`, so

@@ -264,7 +264,7 @@ class MtInputAdapterTest {
     void honoursTheDeclaredTypeUsingTheFeedsPatterns() throws IOException {
         var typed = spec(Map.of("dateFormat", "yyMMdd", "numberFormat", "#0.00", "locale", "de-DE"),
                 selector("booking", ":61:",
-                        field("valueDate", "~([0-9]{6}).*~1", DataType.DATE),
+                        field("valueDate", "~([0-9]{6}).*~1", DataType.TEMPORAL),
                         field("amount", "~[0-9]{10}[CD]([0-9,]+)N.*~1", DataType.DECIMAL),
                         field("side", "~[0-9]{10}([CD]).*~1")));
 
@@ -379,12 +379,20 @@ class MtInputAdapterTest {
      * {@link Locator.At} now refuses a blank selector when it is constructed, so
      * the spec cannot be built to hand over. Asserted here rather than assumed:
      * it is a guarantee this adapter relies on and does not own.
+     * <p>
+     * Both spellings, because the refusal has to hold however a spec is built.
+     * {@link Locator#at} is the one every other call site here uses since 0.49
+     * and it only delegates - but "only delegates" is exactly the sort of thing
+     * that stops being true, and this is the guarantee that stands between a
+     * blank selector and a feed that loads nothing in silence.
      */
     @Test
     void ablankSelectorCannotEvenBeConstructed() {
-        var thrown = assertThrows(IllegalArgumentException.class,
-                () -> new Locator.At("  "));
-        assertTrue(thrown.getMessage().contains("blank"), thrown.getMessage());
+        assertAll(
+                () -> assertTrue(assertThrows(IllegalArgumentException.class,
+                        () -> Locator.at("  ")).getMessage().contains("blank")),
+                () -> assertTrue(assertThrows(IllegalArgumentException.class,
+                        () -> new Locator.At("  ")).getMessage().contains("blank")));
     }
 
     // ---- delimited sequences, as category 3 uses them ------------------------
@@ -489,7 +497,7 @@ class MtInputAdapterTest {
     void anEmptyMatchIsAbsentWhereAtypeIsDeclared() throws IOException {
         var typed = spec(Map.of("dateFormat", "yyMMdd"),
                 selector("trade", "seq~:15B:",
-                        field("whenever", "~0~.*~0", DataType.DATE)));
+                        field("whenever", "~0~.*~0", DataType.TEMPORAL)));
 
         var rows = new MtInputAdapterFactory()
                 .createInputAdapter(typed)
@@ -630,8 +638,8 @@ class MtInputAdapterTest {
      */
     @Test
     void refusesAcountingFieldSelector() {
-        var counting = spec(new RecordSelectorSpec("booking", new Locator.At(":61:"),
-                List.of(new FieldSelectorSpec("line", new Selector.Nth(1), DataType.TEXT))));
+        var counting = spec(new RecordSelectorSpec("booking", Locator.at(":61:"),
+                List.of(new FieldSelectorSpec("line", Selector.nth(1), DataType.TEXT))));
         var thrown = assertThrows(IllegalArgumentException.class,
                 () -> new MtInputAdapterFactory().createInputAdapter(counting));
         assertAll(
@@ -653,7 +661,7 @@ class MtInputAdapterTest {
     @Test
     void refusesArecordSelectorWithAdiscriminator() {
         var filtered = spec(new RecordSelectorSpec("booking",
-                new Locator.Where(new Discriminator.Equals(new Selector.Text(":61:"), "C")),
+                Locator.where(new Discriminator.Equals(Selector.text(":61:"), "C")),
                 List.of(field("line", "~.*~0"))));
         var thrown = assertThrows(IllegalArgumentException.class,
                 () -> new MtInputAdapterFactory().createInputAdapter(filtered));
@@ -673,7 +681,7 @@ class MtInputAdapterTest {
     }
 
     private static RecordSelectorSpec selector(String name, String tags, FieldSelectorSpec... fields) {
-        return new RecordSelectorSpec(name, new Locator.At(tags), List.of(fields));
+        return new RecordSelectorSpec(name, Locator.at(tags), List.of(fields));
     }
 
     private static FieldSelectorSpec field(String name, String selector) {

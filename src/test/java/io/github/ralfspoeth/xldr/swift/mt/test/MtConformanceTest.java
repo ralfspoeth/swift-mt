@@ -58,8 +58,8 @@ class MtConformanceTest extends InputAdapterContract {
     @Override
     protected @NonNull InputSpec spec() {
         return new InputSpec("text/x-swift",
-                List.of(new RecordSelectorSpec("bookings", new Locator.At(":61:"), List.of(
-                        new FieldSelectorSpec("valueDate", "~([0-9]{6}).*~1", DataType.DATE),
+                List.of(new RecordSelectorSpec("bookings", Locator.at(":61:"), List.of(
+                        new FieldSelectorSpec("valueDate", "~([0-9]{6}).*~1", DataType.TEMPORAL),
                         new FieldSelectorSpec("amount", "~[0-9]{10}[CD]([0-9,]+)N.*~1", DataType.DECIMAL),
                         new FieldSelectorSpec("side", "~[0-9]{10}([CD]).*~1", DataType.TEXT)))),
                 List.of(),

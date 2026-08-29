@@ -12,6 +12,5 @@ open module io.github.ralfspoeth.xldr.swift.mt.test {
     requires java.logging;
     // the integration test reads the server's own MXBean when it times out
     requires java.management;
-
     uses InputAdapterFactory;
 }
