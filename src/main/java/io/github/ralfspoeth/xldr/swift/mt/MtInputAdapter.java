@@ -206,7 +206,11 @@ class MtInputAdapter implements InputAdapter {
 
     record Records(RecordSelector selector, Map<String, FieldSelector> fieldSelectors) {}
 
-    private final Map<String, Records> recordSelectors;
+    /**
+     * Insertion-ordered, so that {@code keySet()} reads back to an author in the
+     * order they wrote their record selectors when one of them is misspelled.
+     */
+    private final Map<String, Records> recordSelectors = new LinkedHashMap<>();
 
     /**
      * The feed's date and number patterns, applied to what a selector matched.
@@ -223,22 +227,28 @@ class MtInputAdapter implements InputAdapter {
 
     public MtInputAdapter(InputSpec inputSpec) {
         formats = Formats.of(inputSpec.properties());
-        recordSelectors = inputSpec.recordSelectors()
-                .stream()
-                .collect(toMap(
-                        RecordSelectorSpec::name,
-                        rs -> new Records(
-                                parseRecordSelector(rs),
-                                rs.fieldSelectors()
-                                        .stream()
-                                        .collect(toMap(
-                                                        FieldSelectorSpec::name,
-                                                        fs -> parseFields(fs.requireText(NOT_COUNTED),
-                                                                typeOf(fs))
-                                                )
-                                        )
-                        )
-                ));
+        // A loop rather than a collect, because refusing a duplicate is control
+        // flow: toMap does refuse one, but as an IllegalStateException that
+        // cannot name which selector it was, the merge function never seeing the
+        // key. Every other adapter of this SPI throws IllegalArgumentException
+        // and says the name, and a spec author reading two adapters' complaints
+        // should not have to notice that they mean the same thing.
+        //
+        // The inner collect stays: RecordSelectorSpec already refuses two field
+        // selectors of one name, so that map cannot be handed a duplicate.
+        for (var rs : inputSpec.recordSelectors()) {
+            var records = new Records(
+                    parseRecordSelector(rs),
+                    rs.fieldSelectors()
+                            .stream()
+                            .collect(toMap(
+                                    FieldSelectorSpec::name,
+                                    fs -> parseFields(fs.requireText(NOT_COUNTED), typeOf(fs)))));
+            if (recordSelectors.putIfAbsent(rs.name(), records) != null) {
+                throw new IllegalArgumentException("two record selectors are named '" + rs.name()
+                        + "'; a mapping names one of them and could not say which");
+            }
+        }
     }
 
     /** what the spec declared, or {@code TEXT} where it declared nothing */

@@ -1,7 +1,6 @@
 package io.github.ralfspoeth.xldr.swift.mt.it;
 
 import io.github.ralfspoeth.xldr.server.Config;
-import io.github.ralfspoeth.xldr.server.Delivery;
 import io.github.ralfspoeth.xldr.server.ServerMXBean;
 import io.github.ralfspoeth.xldr.server.Watcher;
 import org.junit.jupiter.api.AfterEach;
@@ -48,6 +47,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * pooling, configuration or the command line.
  */
 class SwiftFeedIT {
+
+    /**
+     * The file that makes a directory a feed. Written out rather than taken from
+     * {@code server}, which stopped exporting the type at 0.51: the name is part
+     * of what a deployment is promised, and a test that drives the server through
+     * the file system should say it the way an operator does.
+     */
+    private static final String DELIVERY = "delivery.properties";
 
     private static final String JDBC_URL = "jdbc:h2:mem:swiftit;DB_CLOSE_DELAY=-1";
     private static final Duration TIMEOUT = Duration.ofSeconds(20);
@@ -108,7 +115,7 @@ class SwiftFeedIT {
         var feed = Files.createDirectory(root.resolve("statements"));
         // two files now: how the statements arrive, and what to do with them.
         // The delivery file is what makes the directory a feed at all.
-        Files.writeString(feed.resolve(Delivery.FILE), "accepts = glob:*.sta\n");
+        Files.writeString(feed.resolve(DELIVERY), "accepts = glob:*.sta\n");
         Files.writeString(feed.resolve("spec.json"), SPEC);
         await("in/ to be created", () -> Files.isDirectory(feed.resolve("in")));
 
