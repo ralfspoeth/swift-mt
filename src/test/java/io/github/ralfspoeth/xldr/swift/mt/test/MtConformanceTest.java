@@ -71,4 +71,9 @@ class MtConformanceTest extends InputAdapterContract {
     protected byte @NonNull [] sample() {
         return Messages.MT940.getBytes(US_ASCII);
     }
+
+    @Override
+    protected List<Refusal> refusals() {
+        return List.of(); // todo
+    }
 }
