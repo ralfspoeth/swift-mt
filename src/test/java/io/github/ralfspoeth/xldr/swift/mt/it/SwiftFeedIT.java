@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -63,19 +64,27 @@ class SwiftFeedIT {
     private Watcher watcher;
 
     /**
-     * The server says why a feed did not come up at DEBUG, and JUL's console
-     * handler starts at INFO, so the one line worth having is the one thrown
-     * away. This is done in code rather than left to {@code logging.properties}
-     * alone so that it holds when the test is run from an IDE too, which does
-     * not pass the build's system properties.
+     * Holds the level {@code logging.properties} asks for when the test is run
+     * from an IDE, which does not pass the build's system properties and so
+     * never reads that file.
+     * <p>
+     * It used to add a {@link ConsoleHandler} of its own as well, and turn the
+     * logger up to {@code ALL} so that the DEBUG line explaining why a feed did
+     * not come up would be printed. Both are gone. The handler was a second one
+     * on top of the one {@code logging.properties} configures, and a record
+     * goes to its logger's handlers and then to every ancestor's regardless of
+     * their levels - so under Maven every line the server logged was printed
+     * twice. And {@code ALL} bought the DEBUG line at the price of the hundreds
+     * of them a one-second scan interval produces; what explains a failure is
+     * {@link #diagnosis()}, assembled at the moment the wait gives up.
+     * <p>
+     * Raising this to {@code ALL} is still the thing to do when a feed will not
+     * come up - from here for an IDE run, in {@code logging.properties} for a
+     * build.
      */
     @BeforeAll
-    static void showWhatTheServerIsThinking() {
-        var handler = new ConsoleHandler();
-        handler.setLevel(Level.ALL);
-        var log = Logger.getLogger("io.github.ralfspoeth.xldr");
-        log.addHandler(handler);
-        log.setLevel(Level.ALL);
+    static void quietenTheServer() {
+        Logger.getLogger("io.github.ralfspoeth.xldr").setLevel(Level.INFO);
     }
 
     @BeforeEach
@@ -87,6 +96,14 @@ class SwiftFeedIT {
              var stmt = conn.createStatement()) {
             stmt.execute("drop table if exists booking");
             stmt.execute("create table booking(value_date varchar(6), side varchar(1), info varchar(400))");
+            // the second table's columns are typed, which is the point of it:
+            // a varchar would accept whatever the adapter handed over and prove
+            // nothing about the conversion
+            stmt.execute("drop table if exists statement_line");
+            stmt.execute("""
+                    create table statement_line(
+                        sender varchar(40), value_date timestamp, side varchar(1),
+                        amount decimal(15,2), info varchar(400))""");
         }
         var props = new Properties();
         props.setProperty("xldr.roots", root.toString());
@@ -131,6 +148,48 @@ class SwiftFeedIT {
         assertTrue(archived(feed).getFirst().getFileName().toString().startsWith("statement"));
     }
 
+    /**
+     * The worked example of README.md, run.
+     *
+     * <p>The test above covers the chain and settles for text: every column is a
+     * varchar, so it says nothing about what the declared types do. This one is
+     * the documented spec instead - {@code TEMPORAL} and {@code DECIMAL}, with
+     * the {@code dateFormat}, {@code numberFormat} and {@code locale} that make
+     * them readable - landing in columns that would refuse the wrong thing. A
+     * {@code timestamp} column will not take {@code "260806"} and a
+     * {@code decimal} will not take {@code "1250,00"}, so the assertions are
+     * only reached if the conversion happened.
+     *
+     * <p>It exists because the example was prose and prose does not run. Two
+     * things were wrong with it, both found by writing this: it declared
+     * {@code "DATE"}, which xldr renamed {@code TEMPORAL} at 0.47 and now
+     * refuses by name, and it called block 1 the account.
+     *
+     * <p>That second one is the more interesting. The account is {@code :25:},
+     * and a {@code :61:~:86:} record cannot reach it: a block-4 field selector
+     * addresses a tag <em>of the record</em>, and {@code :25:} is a header tag
+     * that appears once above the bookings. {@code 1~.*~0} reads the whole
+     * basic header, which names the sending institution, so that is what it is
+     * called here. Carrying the account down onto every booking row would be a
+     * feature this adapter does not have.
+     */
+    @Test
+    @Timeout(60)
+    void loadsTheWorkedExampleFromTheReadme() throws Exception {
+        var feed = Files.createDirectory(root.resolve("worked-example"));
+        Files.writeString(feed.resolve(DELIVERY), "accepts = glob:*.sta\n");
+        Files.writeString(feed.resolve("spec.json"), WORKED_EXAMPLE);
+        await("in/ to be created", () -> Files.isDirectory(feed.resolve("in")));
+
+        deliver(feed, "statement.sta", MT940);
+
+        await("rows to arrive", () -> statementLines().size() == 2);
+        assertEquals(
+                List.of("F01BANKDEFFXXXX0000000000|2026-08-06T00:00|D|1250.00",
+                        "F01BANKDEFFXXXX0000000000|2026-08-06T00:00|C|8500.00"),
+                statementLines());
+    }
+
     // ---- helpers ------------------------------------------------------------
 
     private static void deliver(Path feed, String name, String content) throws IOException {
@@ -153,6 +212,30 @@ class SwiftFeedIT {
              var rs = stmt.executeQuery("select value_date, side, info from booking order by value_date, side desc")) {
             while (rs.next()) {
                 rows.add(rs.getString(1) + "|" + rs.getString(2) + "|" + rs.getString(3));
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+        return rows;
+    }
+
+    /**
+     * Read back as {@code LocalDateTime} and {@code BigDecimal} rather than as
+     * strings, so that a column holding the right characters for the wrong
+     * reason cannot pass.
+     */
+    private static List<String> statementLines() {
+        var rows = new ArrayList<String>();
+        try (var conn = DriverManager.getConnection(JDBC_URL);
+             var stmt = conn.createStatement();
+             var rs = stmt.executeQuery("""
+                     select sender, value_date, side, amount from statement_line
+                     order by value_date, side desc""")) {
+            while (rs.next()) {
+                rows.add(rs.getString("sender")
+                        + "|" + rs.getObject("value_date", LocalDateTime.class)
+                        + "|" + rs.getString("side")
+                        + "|" + rs.getBigDecimal("amount"));
             }
         } catch (SQLException e) {
             throw new IllegalStateException(e);
@@ -226,6 +309,54 @@ class SwiftFeedIT {
             INV-2026-4412
             :62F:C260806EUR61570,50
             -}""";
+
+    /**
+     * The spec README.md prints, corrected and given the {@code mapping} the
+     * prose leaves out. Keep the two in step: the point of this test is that
+     * the documented example is one that has run.
+     * <p>
+     * Read the selectors against the message above. {@code :61:} is tag 0 of
+     * the record and {@code :86:} tag 1, so a pattern with no tag in front of
+     * it reads the statement line: the first six digits of
+     * {@code 2608060806D1250,00NTRF...} are the value date, the ten digits are
+     * value date and entry date together, and the letter after them is the
+     * side. {@code ~1~.*~0} takes the whole of the information tag, both lines
+     * of it, because the patterns are compiled with {@code DOTALL}.
+     */
+    private static final String WORKED_EXAMPLE = """
+            {
+              "input": {
+                "mimeType": "text/x-swift",
+                "properties": {"dateFormat": "yyMMdd", "numberFormat": "#0.00", "locale": "de-DE"},
+                "recordSelectors": [
+                  {
+                    "name": "booking",
+                    "selector": ":61:~:86:",
+                    "fieldSelectors": [
+                      {"name": "sender",    "selector": "1~.*~0",                       "type": "TEXT"},
+                      {"name": "valueDate", "selector": "~([0-9]{6}).*~1",              "type": "TEMPORAL"},
+                      {"name": "amount",    "selector": "~[0-9]{10}[CD]([0-9,]+)N.*~1", "type": "DECIMAL"},
+                      {"name": "side",      "selector": "~[0-9]{10}([CD]).*~1",         "type": "TEXT"},
+                      {"name": "info",      "selector": "~1~.*~0",                      "type": "TEXT"}
+                    ]
+                  }
+                ]
+              },
+              "mapping": [
+                {
+                  "recordSelector": "booking",
+                  "table": "statement_line",
+                  "fieldMapping": [
+                    {"fieldSelector": "sender",    "column": "sender"},
+                    {"fieldSelector": "valueDate", "column": "value_date"},
+                    {"fieldSelector": "amount",    "column": "amount"},
+                    {"fieldSelector": "side",      "column": "side"},
+                    {"fieldSelector": "info",      "column": "info"}
+                  ]
+                }
+              ]
+            }
+            """;
 
     private static final String SPEC = """
             {

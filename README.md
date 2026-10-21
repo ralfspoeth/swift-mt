@@ -157,16 +157,16 @@ shape when the adapter is built, and one the message does not carry yields `null
 at parse time, exactly as an absent block 3 or 5 does. Only block `4` is
 addressed by tag; every other block is handed over whole.
 
-| Selector | Reads |
-|---|---|
-| `1~.*~0` | the whole basic header |
-| `2~.*~0` | the whole application header |
-| `~.*~0` | the first tag of the record, whole (block 4 by default) |
-| `~1~.*~0` | the second tag of the record, whole |
-| `~:30T:~.*~0` | the record's `:30T:`, wherever it sits |
-| `~([0-9]{6}).*~1` | the first six characters of the first tag - a value date |
-| `~1~.*UNIT/([0-9]+),~1` | a quantity out of `:AGGR//UNIT/1500,` - slashes and all |
-| `5~.*~0` | the whole trailer |
+| Selector                | Reads                                                    |
+|-------------------------|----------------------------------------------------------|
+| `1~.*~0`                | the whole basic header                                   |
+| `2~.*~0`                | the whole application header                             |
+| `~.*~0`                 | the first tag of the record, whole (block 4 by default)  |
+| `~1~.*~0`               | the second tag of the record, whole                      |
+| `~:30T:~.*~0`           | the record's `:30T:`, wherever it sits                   |
+| `~([0-9]{6}).*~1`       | the first six characters of the first tag - a value date |
+| `~1~.*UNIT/([0-9]+),~1` | a quantity out of `:AGGR//UNIT/1500,` - slashes and all  |
+| `5~.*~0`                | the whole trailer                                        |
 
 `<tag>` says which tag of the record to read, and comes in two forms. A
 **number** counts from zero within the record: with `":61:~:86:"`, `0` is the
