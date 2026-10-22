@@ -5,7 +5,14 @@ MT messages
 
 It is a separate project rather than a module of the toolkit because nothing in
 xldr needs it: the adapter is found at run time through `ServiceLoader`, so
-dropping the jar on the module path is the whole of the installation.
+dropping the jar on the path is the whole of the installation.
+
+Either path. It declares itself twice - `provides` in `module-info` and a line
+in `META-INF/services` - because the directive is read only for a resolved
+named module, so a jar on a *classpath*, which is what a war holds and what
+Quarkus builds, lands in the unnamed module and has its directive ignored
+entirely. One of the two is dead weight in any given deployment and there is no
+telling in advance which.
 
 ## Who this is for
 
