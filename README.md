@@ -46,7 +46,7 @@ fourth are always present:
     :20:STMT20260806
     :25:DE12345678901234567890
     ...
-    -}                                    text block - the message itself
+    -}                                     text block - the message itself
     {5:{MAC:12345678}{CHK:ABC123XYZ456}}   trailer, optional
 
 Block 4 is a sequence of **tags**, each `:nn:` or `:nnA:` followed by its
@@ -221,8 +221,8 @@ and the spec itself:
         "name": "booking",
         "selector": ":61:~:86:",
         "fieldSelectors": [
-          {"name": "account",   "selector": "1~.*~0",                       "type": "TEXT"},
-          {"name": "valueDate", "selector": "~([0-9]{6}).*~1",              "type": "DATE"},
+          {"name": "sender",    "selector": "1~.*~0",                       "type": "TEXT"},
+          {"name": "valueDate", "selector": "~([0-9]{6}).*~1",              "type": "TEMPORAL"},
           {"name": "amount",    "selector": "~[0-9]{10}[CD]([0-9,]+)N.*~1", "type": "DECIMAL"},
           {"name": "side",      "selector": "~[0-9]{10}([CD]).*~1",         "type": "TEXT"},
           {"name": "info",      "selector": "~1~.*~0",                      "type": "TEXT"}
@@ -271,6 +271,16 @@ lesser degree and is kept only for feeds that have no better name for their
 input.
 
 ## Known limitations
+
+**A header tag cannot be reached from a repetition record.** A block-4 field
+selector addresses a tag *of the record*, so with `":61:~:86:"` only those two
+are in reach. The statement's own `:25:` sits once above the bookings and is
+not, which means a row per booking cannot carry the account it belongs to -
+`1~.*~0` in the worked example reads the basic header, naming the sending
+institution rather than the account, and is called `sender` for that reason.
+Where the account is needed on every row, a second record selector over `:25:`
+and a join downstream is the way; carrying a header tag down onto each
+repetition would be a feature this adapter does not have.
 
 **A pattern may not contain `~`.** The parts of a selector are found by
 position, so the separator cannot appear inside a pattern. With this separator
